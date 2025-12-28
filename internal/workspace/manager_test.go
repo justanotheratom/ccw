@@ -275,3 +275,37 @@ func TestSetConfigValue(t *testing.T) {
 		t.Fatalf("expected default_base to change")
 	}
 }
+
+func TestCreateWorkspacePathTraversalValidation(t *testing.T) {
+	reposRoot, repoName := initRepoForManager(t)
+	tmuxStub := newStubTmux()
+	mgr := newManagerForTest(t, reposRoot, tmuxStub)
+
+	cases := []struct {
+		name    string
+		repo    string
+		branch  string
+		wantErr bool
+	}{
+		{"valid", repoName, "feature/test", false},
+		{"repo traversal", "../../etc", "branch", true},
+		{"branch traversal", repoName, "../../passwd", true},
+		{"absolute repo", "/etc/passwd", "branch", true},
+		{"absolute branch", repoName, "/etc/shadow", true},
+		{"null byte", repoName + "\x00", "branch", true},
+		{"backslash", repoName + "\\", "branch", true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := mgr.CreateWorkspace(context.Background(), tc.repo, tc.branch, CreateOptions{NoFetch: true, NoAttach: true})
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error for case %s", tc.name)
+				}
+			} else if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}

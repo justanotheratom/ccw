@@ -1,15 +1,28 @@
 # Claude CLI Behavior Notes (T1.7)
 
-Assumptions to validate for future implementation:
+## Verified Behavior (as of manual checks)
 
-- `claude --resume <session_name>` resumes an existing Claude Code session without prompting.
-- Session rename support: Claude Code accepts rename commands triggered externally after a short delay; start with a 5 second delay as default and adjust if the CLI exposes a safer flag.
-- Launch command uses `claude` binary from PATH; no additional flags are required for basic interactive mode.
-- If `--resume` fails (unknown session), fallback should allow creating/selecting a session manually.
+- `claude --help` is present and the CLI can be invoked from PATH.
+- Basic launch without flags opens an interactive session.
 
-Open verification items:
-- Confirm whether `--resume` creates a new session when the name does not exist or exits with an error.
-- Confirm if there is a dedicated flag for setting the session name at launch to avoid sending rename keystrokes.
-- Measure minimum safe delay before issuing a rename to avoid race conditions.
+## Items to Validate (TODO)
 
-These assumptions will be revisited before building session management in Phase 4 to ensure the behavior matches the real CLI.
+- `claude --resume <session_name>` behavior when the session is missing (does it create a new session or error?).
+- Whether a `--session-name`/`--name` flag exists to avoid keystroke-based renaming.
+- Minimum safe delay, if keystrokes are required for renaming.
+
+## Fallback Strategy
+
+1) Detect capabilities at runtime (planned):
+   - Parse `claude --help` to discover resume/name flags.
+   - Use flags when available; otherwise fall back to keystrokes with a configurable delay.
+2) If resume fails, warn the user and offer manual session selection or fresh launch.
+3) Allow overrides via environment variable (e.g., `CCW_CLAUDE_MODE`) once detection is implemented.
+
+## Compatibility Matrix (to fill as versions are tested)
+
+| Claude CLI Version | Resume Support | Rename Method | Status      |
+|--------------------|----------------|---------------|-------------|
+| (TBD)              | (TBD)          | (TBD)         | Needs test  |
+
+Update this document as real versions are verified during release testing.

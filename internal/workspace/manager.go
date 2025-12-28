@@ -150,6 +150,13 @@ func (m *Manager) CreateWorkspace(ctx context.Context, repo, branch string, opts
 		return Workspace{}, err
 	}
 
+	if err := validateName(repo); err != nil {
+		return Workspace{}, fmt.Errorf("invalid repo name: %w", err)
+	}
+	if err := validateBranch(branch); err != nil {
+		return Workspace{}, fmt.Errorf("invalid branch name: %w", err)
+	}
+
 	reposDir, err := m.cfg.ExpandedReposDir()
 	if err != nil {
 		return Workspace{}, err
@@ -320,6 +327,10 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, id string, opts RemoveOpt
 		return err
 	}
 
+	if err := validateName(id); err != nil {
+		return fmt.Errorf("invalid workspace identifier: %w", err)
+	}
+
 	resolvedID, ws, err := m.lookupWorkspace(ctx, id)
 	if err != nil {
 		return err
@@ -387,6 +398,10 @@ func combineErrors(errs []error) error {
 }
 
 func (m *Manager) lookupWorkspace(ctx context.Context, query string) (string, Workspace, error) {
+	if err := validateName(query); err != nil {
+		return "", Workspace{}, fmt.Errorf("invalid workspace identifier: %w", err)
+	}
+
 	reg, err := m.regStore.Read(ctx)
 	if err != nil {
 		return "", Workspace{}, err
@@ -500,6 +515,36 @@ func (m *Manager) ResetConfig() (config.Config, error) {
 	}
 	m.cfg = cfg
 	return cfg, nil
+}
+
+func validateName(name string) error {
+	if name == "" {
+		return fmt.Errorf("name cannot be empty")
+	}
+	if strings.Contains(name, "..") {
+		return fmt.Errorf("name cannot contain '..'")
+	}
+	if filepath.IsAbs(name) {
+		return fmt.Errorf("name cannot be an absolute path")
+	}
+	if strings.ContainsAny(name, "\x00") {
+		return fmt.Errorf("name contains invalid characters")
+	}
+	if strings.ContainsAny(name, "\\") {
+		return fmt.Errorf("name cannot contain backslashes")
+	}
+	return nil
+}
+
+func validateBranch(branch string) error {
+	if err := validateName(branch); err != nil {
+		return err
+	}
+	// Allow branch slashes but forbid traversal.
+	if strings.Contains(branch, "/../") || strings.HasPrefix(branch, "../") || strings.HasSuffix(branch, "/..") {
+		return fmt.Errorf("branch cannot traverse directories")
+	}
+	return nil
 }
 
 type rollback struct {

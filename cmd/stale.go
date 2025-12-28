@@ -3,8 +3,6 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"strings"
-
 	"github.com/ccw/ccw/internal/workspace"
 	"github.com/spf13/cobra"
 )
@@ -38,17 +36,17 @@ var staleCmd = &cobra.Command{
 			return nil
 		}
 
-		var errs []string
+		var errs []error
 		for _, st := range stale {
 			if err := mgr.RemoveWorkspace(cmd.Context(), st.ID, workspace.RemoveOptions{Force: force}); err != nil {
-				errs = append(errs, fmt.Sprintf("%s: %v", st.ID, err))
+				errs = append(errs, fmt.Errorf("%s: %w", st.ID, err))
 			} else {
 				fmt.Fprintf(cmd.OutOrStdout(), "removed %s\n", st.ID)
 			}
 		}
 
 		if len(errs) > 0 {
-			return errors.New(strings.Join(errs, "; "))
+			return errors.Join(errs...)
 		}
 
 		return nil
