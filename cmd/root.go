@@ -12,6 +12,7 @@ var (
 )
 
 func Execute() error {
+	rootCmd.SilenceUsage = true
 	return rootCmd.Execute()
 }
 
