@@ -3,9 +3,11 @@ package workspace
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -222,5 +224,33 @@ func TestRegistryLoadExistingFile(t *testing.T) {
 
 	if len(loaded.Workspaces) != 1 {
 		t.Fatalf("expected 1 workspace, got %d", len(loaded.Workspaces))
+	}
+}
+
+func TestRegistryConcurrentUpdates(t *testing.T) {
+	store := newTestStore(t, 500*time.Millisecond)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			err := store.Update(context.Background(), func(reg *Registry) error {
+				return reg.Add(fmt.Sprintf("demo/feature-%d", i), Workspace{Repo: "demo"})
+			})
+			if err != nil {
+				t.Errorf("update failed: %v", err)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	reg, err := store.Read(context.Background())
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+
+	if len(reg.Workspaces) != 5 {
+		t.Fatalf("expected 5 workspaces, got %d", len(reg.Workspaces))
 	}
 }

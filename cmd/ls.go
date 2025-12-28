@@ -6,6 +6,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
 
@@ -56,11 +57,17 @@ var lsCmd = &cobra.Command{
 			if st.SessionAlive {
 				status = "alive"
 			}
+			coloredStatus := status
+			if st.SessionAlive {
+				coloredStatus = color.New(color.FgGreen).Sprint(status)
+			} else {
+				coloredStatus = color.New(color.FgRed).Sprint(status)
+			}
 			last := st.Workspace.LastAccessedAt.Format(time.RFC3339)
 			if showAll {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", st.ID, status, last, st.Workspace.WorktreePath, st.Workspace.Branch)
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", st.ID, coloredStatus, last, st.Workspace.WorktreePath, st.Workspace.Branch)
 			} else {
-				fmt.Fprintf(w, "%s\t%s\t%s\n", st.ID, status, last)
+				fmt.Fprintf(w, "%s\t%s\t%s\n", st.ID, coloredStatus, last)
 			}
 		}
 

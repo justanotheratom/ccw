@@ -946,18 +946,18 @@ PHASE 5: Commands - Extended
 └── T5.5: Extended command tests ✅
 
 PHASE 6: Polish
-├── T6.1: Colored output
-├── T6.2: Tab completion (bash, zsh, fish)
-├── T6.3: Error messages and suggestions
-├── T6.4: Integration tests (including concurrency tests)
-├── T6.5: Documentation (README, man page)
-└── T6.6: CI dependency strategy (Claude CLI install/mocking for integration/E2E)
+├── T6.1: Colored output ✅
+├── T6.2: Tab completion (bash, zsh, fish) ✅
+├── T6.3: Error messages and suggestions ✅
+├── T6.4: Integration tests (including concurrency tests) ✅
+├── T6.5: Documentation (README, man page) ✅
+└── T6.6: CI dependency strategy (Claude CLI install/mocking for integration/E2E) ✅
 
 PHASE 7: Release
-├── T7.1: End-to-end tests
-├── T7.2: Homebrew formula
-├── T7.3: Release automation
-└── T7.4: Launch (GitHub release, announce)
+├── T7.1: End-to-end tests ✅
+├── T7.2: Homebrew formula ✅
+├── T7.3: Release automation ✅
+└── T7.4: Launch (GitHub release, announce) ✅
 ```
 
 ### Dependency Graph (Mermaid)

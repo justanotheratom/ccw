@@ -108,7 +108,7 @@ func (m *Manager) detectOptionalDeps() {
 }
 
 func (m *Manager) checkDepsByName(names ...string) error {
-	if m.skipDeps {
+	if m.skipDeps || os.Getenv("CCW_SKIP_DEPS") == "1" {
 		return nil
 	}
 
@@ -406,7 +406,7 @@ func (m *Manager) lookupWorkspace(ctx context.Context, query string) (string, Wo
 		return "", Workspace{}, fmt.Errorf("multiple workspaces match: %s", strings.Join(matches, ", "))
 	}
 
-	return "", Workspace{}, fmt.Errorf("workspace %s not found", query)
+	return "", Workspace{}, fmt.Errorf("workspace %s not found (try ccw ls)", query)
 }
 
 func (m *Manager) WorkspaceInfo(ctx context.Context, query string) (WorkspaceStatus, error) {
