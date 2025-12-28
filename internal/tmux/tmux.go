@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -32,6 +33,7 @@ func (r Runner) cmdArgs(args []string) []string {
 func (r Runner) run(ctx context.Context, args ...string) (string, error) {
 	fullArgs := r.cmdArgs(args)
 	cmd := exec.CommandContext(ctx, "tmux", fullArgs...)
+	cmd.Stdin = os.Stdin
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
