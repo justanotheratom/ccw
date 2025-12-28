@@ -909,7 +909,7 @@ jobs:
 
 ```
 PHASE 1: Foundation
-├── T1.1: Project setup (repo, build system, CI)
+├── T1.1: Project setup (repo, build system, CI) ✅
 ├── T1.2: Config module (load, save, defaults)
 ├── T1.3: Registry module (load, save, CRUD)
 ├── T1.4: CLI skeleton (argument parsing, help)
