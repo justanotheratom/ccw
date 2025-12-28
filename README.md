@@ -14,6 +14,33 @@ CCW is a CLI for creating and managing Claude Code development workspaces using 
 
 Workspaces are stored under `~/.ccw` by default (`CCW_HOME` overrides). Repositories are resolved from `repos_dir` in config (default `~/github`).
 
+## Installation
+
+### Homebrew (macOS/Linux)
+```bash
+brew tap justanotheratom/ccw   # when published
+brew install ccw
+```
+
+### Manual download (examples)
+```bash
+curl -L https://github.com/justanotheratom/ccw/releases/latest/download/ccw-darwin-arm64 -o /usr/local/bin/ccw
+chmod +x /usr/local/bin/ccw
+```
+Replace the URL with the binary for your OS/arch:
+- macOS Intel: `ccw-darwin-amd64`
+- macOS Apple Silicon: `ccw-darwin-arm64`
+- Linux Intel: `ccw-linux-amd64`
+- Linux ARM: `ccw-linux-arm64`
+
+### From source
+```bash
+git clone https://github.com/justanotheratom/ccw.git
+cd ccw
+make build
+sudo cp bin/ccw /usr/local/bin/
+```
+
 ## Usage
 ```bash
 ccw new myrepo feature/cool-thing
@@ -41,3 +68,10 @@ An example formula is provided at `packaging/homebrew/ccw.rb`. Update the tarbal
 
 ## Testing
 Tests rely on `git` and `tmux`. CI installs tmux; local runs may skip dependency checks by setting `CCW_SKIP_DEPS=1` when needed. Use `make test` to run the suite.
+
+## Troubleshooting
+- **"tmux session not found"** after reboot: run `ccw open <workspace>` to recreate the session.
+- **Workspace shows as dead but files exist**: `ccw open <workspace>` to rebuild panes.
+- **Branch not merged** when removing: merge first, or use `ccw rm --force`/`--keep-branch`.
+- **Missing optional tools**: install `lazygit` for right-pane UI; `ccw` will continue without it.
+- **Dependency checks in CI**: set `CCW_SKIP_DEPS=1` to skip required/optional binary checks.

@@ -227,6 +227,39 @@ func TestRegistryLoadExistingFile(t *testing.T) {
 	}
 }
 
+func TestRegistryCorruptionFallsBackToBackup(t *testing.T) {
+	store := newTestStore(t, 200*time.Millisecond)
+
+	// Save initial registry
+	err := store.Update(context.Background(), func(reg *Registry) error {
+		return reg.Add("demo/feature/test", Workspace{Repo: "demo"})
+	})
+	if err != nil {
+		t.Fatalf("initial update: %v", err)
+	}
+
+	// Trigger a second save to create a backup file.
+	err = store.Update(context.Background(), func(reg *Registry) error {
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("second update: %v", err)
+	}
+
+	// Corrupt primary file
+	if err := os.WriteFile(store.registryPath(), []byte("not json"), 0o644); err != nil {
+		t.Fatalf("corrupt registry: %v", err)
+	}
+
+	reg, err := store.Read(context.Background())
+	if err != nil {
+		t.Fatalf("Read should recover from backup: %v", err)
+	}
+	if len(reg.Workspaces) != 1 {
+		t.Fatalf("expected recovery with 1 workspace, got %d", len(reg.Workspaces))
+	}
+}
+
 func TestRegistryConcurrentUpdates(t *testing.T) {
 	store := newTestStore(t, 500*time.Millisecond)
 

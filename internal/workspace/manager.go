@@ -355,7 +355,7 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, id string, opts RemoveOpt
 				return err
 			}
 			if !merged {
-				return git.ErrBranchNotMerged
+				return fmt.Errorf("branch %q is not merged into %q.\nUse --force to delete anyway, or --keep-branch to only remove the workspace.", ws.Branch, ws.BaseBranch)
 			}
 
 			unpushed, err := git.HasUnpushedCommits(ws.RepoPath, ws.Branch)
@@ -363,7 +363,7 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, id string, opts RemoveOpt
 				return err
 			}
 			if unpushed {
-				return fmt.Errorf("branch has unpushed commits")
+				return fmt.Errorf("branch %q has unpushed commits. Push or use --force/--keep-branch.", ws.Branch)
 			}
 		}
 
@@ -418,7 +418,7 @@ func (m *Manager) lookupWorkspace(ctx context.Context, query string) (string, Wo
 	}
 
 	if len(matches) > 1 {
-		return "", Workspace{}, fmt.Errorf("multiple workspaces match: %s", strings.Join(matches, ", "))
+		return "", Workspace{}, fmt.Errorf("multiple workspaces match: %s\nPlease specify a full workspace ID (repo/branch).", strings.Join(matches, ", "))
 	}
 
 	return "", Workspace{}, fmt.Errorf("workspace %s not found (try ccw ls)", query)
