@@ -194,21 +194,25 @@ Developer wants to find workspaces whose branches have been merged.
 ### Functional Requirements
 
 #### FR1: Workspace Creation
-- FR1.1: Create git branch from specified base (default: main)
-- FR1.2: Create git worktree in managed directory
-- FR1.3: Create tmux session with predefined layout
-- FR1.4: Launch Claude Code in left pane
-- FR1.5: Launch lazygit in right pane
-- FR1.6: Attempt to rename Claude Code session for later resume
-- FR1.7: Register workspace in persistent storage
-- FR1.8: Support iTerm2 -CC mode
+- FR1.1: Check required dependencies before execution (git, tmux, claude)
+- FR1.2: Create git branch from specified base (default: main)
+- FR1.3: Create git worktree in managed directory
+- FR1.4: Create tmux session with predefined layout
+- FR1.5: Launch Claude Code in left pane
+- FR1.6: Launch lazygit in right pane (warn if not installed)
+- FR1.7: Attempt to rename Claude Code session for later resume
+- FR1.8: Register workspace in persistent storage with file locking
+- FR1.9: Support iTerm2 -CC mode
+- FR1.10: Rollback on partial failure (cleanup branch/worktree/session if any step fails)
+- FR1.11: Fetch/prune base branch before create, detect existing remote branch, and set upstream tracking on new branch
 
 #### FR2: Workspace Resume
-- FR2.1: Detect if tmux session is alive
-- FR2.2: Attach to existing session if alive
-- FR2.3: Recreate session layout if dead
-- FR2.4: Resume Claude Code by session name
-- FR2.5: Handle case where Claude session name not found (fallback to picker)
+- FR2.1: Check required dependencies before execution (git, tmux, claude)
+- FR2.2: Detect if tmux session is alive
+- FR2.3: Attach to existing session if alive
+- FR2.4: Recreate session layout if dead
+- FR2.5: Resume Claude Code by session name (using `claude --resume {session_name}`)
+- FR2.6: Handle case where Claude session name not found (fallback to picker)
 
 #### FR3: Workspace Listing
 - FR3.1: List all registered workspaces
@@ -217,16 +221,21 @@ Developer wants to find workspaces whose branches have been merged.
 - FR3.4: Show detailed info for single workspace
 
 #### FR4: Workspace Deletion
-- FR4.1: Kill tmux session
-- FR4.2: Remove git worktree
-- FR4.3: Delete git branch (with safety check)
-- FR4.4: Remove from registry
-- FR4.5: Support --force for unmerged branches
-- FR4.6: Support --keep-branch option
+- FR4.1: Check required dependencies before execution (git, tmux)
+- FR4.2: Kill tmux session
+- FR4.3: Remove git worktree
+- FR4.4: Delete git branch (with safety check)
+- FR4.5: Remove from registry with file locking
+- FR4.6: Support --force for unmerged branches
+- FR4.7: Support --keep-branch option
+- FR4.8: Continue cleanup even if individual steps fail (best-effort)
+- FR4.9: Refuse deletion without confirmation (or --force) when branch is unmerged or has unpushed/uncommitted work
 
 #### FR5: Stale Detection
-- FR5.1: Identify workspaces with merged branches
-- FR5.2: Support batch deletion of stale workspaces
+- FR5.1: Check required dependencies before execution (git)
+- FR5.2: Identify workspaces with merged branches
+- FR5.3: Support batch deletion of stale workspaces
+- FR5.4: Support --force option for manual override of merge detection
 
 #### FR6: Configuration
 - FR6.1: Configurable repos directory (default: ~/github)
@@ -243,10 +252,14 @@ Developer wants to find workspaces whose branches have been merged.
 - List workspaces: < 1 second
 
 #### NFR2: Reliability
+- Dependency validation before command execution with clear installation instructions
 - Graceful handling of missing repos
 - Graceful handling of existing branches/worktrees
-- Atomic operations where possible
-- Clear error messages
+- File locking for registry operations to prevent concurrent corruption
+- Atomic operations with rollback on partial failure
+- Best-effort cleanup even when individual steps fail
+- Clear error messages with actionable suggestions
+- Registry repair capabilities for detecting inconsistencies
 
 #### NFR3: Usability
 - Intuitive command structure
@@ -303,6 +316,7 @@ Options:
   --base, -b <branch>    Base branch to create from (default: main)
   --no-attach            Create but don't attach to session
   --message, -m <msg>    Initial prompt to send to Claude Code
+  --no-fetch             Skip fetch/prune of base (not recommended)
 
 Examples:
   ccw new ingredicheck feature/barcode-scanner
@@ -326,6 +340,11 @@ Examples:
   ccw open ingredicheck/feature/barcode-scanner
   ccw open ingredicheck/feat    # Partial match
   ccw open barcode              # Fuzzy match
+
+Matching rules (in order):
+1) Exact match
+2) Single unambiguous prefix
+3) Fuzzy; if multiple match, prompt instead of auto-select
 ```
 
 #### `ccw ls [options]`
@@ -385,6 +404,7 @@ Options:
   --force, -f       Force removal even if branch not merged
   --keep-branch     Don't delete the git branch
   --keep-worktree   Don't delete the worktree (just unregister)
+  --yes             Skip interactive confirmation when unmerged/unpushed changes exist
 
 Examples:
   ccw rm ingredicheck/feature/barcode-scanner
@@ -511,10 +531,13 @@ ccw/
 │   ├── stale.go
 │   └── config.go
 ├── internal/
+│   ├── deps/                # Dependency checking
+│   │   └── deps.go          # Check/warn for git, tmux, claude, lazygit
 │   ├── workspace/           # Workspace management
 │   │   ├── workspace.go     # Core types and methods
-│   │   ├── registry.go      # Load/save workspaces.json
-│   │   └── naming.go        # Name generation, validation
+│   │   ├── registry.go      # Load/save workspaces.json with file locking
+│   │   ├── naming.go        # Name generation, validation
+│   │   └── rollback.go      # Rollback/cleanup on partial failure
 │   ├── git/                 # Git operations
 │   │   ├── worktree.go      # Worktree create/remove
 │   │   ├── branch.go        # Branch create/delete/check merged
@@ -546,8 +569,9 @@ Output:
   
 Algorithm:
   1. workspace_id = repo + "/" + branch
-  2. safe_name = replace(workspace_id, "/", "--")
-  3. Validate: safe_name must be valid tmux session name
+  2. safe_name = normalize workspace_id by replacing "/" with "--", stripping/encoding characters outside [A-Za-z0-9_.-], and truncating to tmux-safe length
+  3. If collision after normalization, append a short hash suffix
+  4. Validate: safe_name must be valid tmux session name and filesystem-safe
 ```
 
 #### Session Resurrection
@@ -582,11 +606,14 @@ Output: boolean (is merged)
 
 Algorithm:
   1. cd to repo_path
-  2. Fetch latest: git fetch origin
-  3. Check if merged:
-     git branch --merged origin/{base_branch} | grep {branch_name}
-  4. If found: return true
-  5. Else: return false
+  2. Fetch/prune remotes: git fetch --prune (on failure: surface error, do not assume merged)
+  3. Resolve base: prefer branch upstream (origin/{base_branch}); if missing, fail with guidance
+  4. Verify branch exists locally; if only remote exists, treat as not merged and warn
+  5. Check merge: git merge-base --is-ancestor {branch_name} origin/{base_branch}
+       - exit 0 → merged
+       - exit 1 → not merged
+       - other → error
+  6. Avoid substring matches entirely; rely on merge-base result
 ```
 
 ### iTerm2 -CC Mode Handling
@@ -608,13 +635,62 @@ Note: In -CC mode, iTerm2 converts tmux constructs to native UI. The commands ar
 
 ### Error Handling
 
+#### Dependency Errors
+
+| Error | Message | Suggestion |
+|-------|---------|------------|
+| Git not installed | git command not found | Install with `brew install git` (macOS) or package manager |
+| Tmux not installed | tmux command not found | Install with `brew install tmux` (macOS) or `apt-get install tmux` (Linux) |
+| Claude Code not installed | claude command not found | Install Claude Code CLI: https://claude.com/claude-code |
+| Lazygit not installed (warning) | lazygit not found (continuing without) | Optional: Install with `brew install lazygit` |
+
+#### Workspace Operation Errors
+
 | Error | Message | Suggestion |
 |-------|---------|------------|
 | Repo not found | Repository 'foo' not found at ~/github/foo | Check the path or run `ccw config repos_dir` |
 | Branch exists | Branch 'feature/x' already exists | Use a different name or delete the existing branch |
 | Worktree exists | Worktree already exists at ~/.ccw/worktrees/... | Remove with `ccw rm` or check for conflicts |
-| Tmux not installed | tmux command not found | Install with `brew install tmux` |
-| Claude Code not installed | claude command not found | Install Claude Code CLI |
+| Registry locked | Registry file is locked by another process | Wait a moment and try again |
+| Partial failure during creation | Failed to create tmux session (cleaned up branch and worktree) | Check tmux installation and try again |
+| Branch not merged / unpushed work | Branch has unmerged or unpushed commits | Confirm with --force/--yes or merge/push first |
+
+#### Rollback Strategy
+
+When `ccw new` fails partway through, rollback in reverse order:
+```
+1. If tmux session created → kill session
+2. If worktree created → remove worktree
+3. If branch created → delete branch
+4. If registry updated → remove entry (with file lock)
+```
+
+When `ccw rm` fails partway through, continue best-effort:
+```
+1. Try to kill tmux session (warn if fails)
+2. Try to remove worktree (warn if fails)
+3. Try to delete branch (warn if fails, skip if --keep-branch)
+4. Always remove from registry (critical step)
+```
+
+#### File Locking Strategy
+
+Registry operations use file locking to prevent concurrent corruption:
+```go
+1. Acquire exclusive lock on workspaces.json.lock
+2. Read workspaces.json
+3. Modify in memory
+4. Write to workspaces.json.tmp
+5. Rename workspaces.json.tmp → workspaces.json (atomic)
+6. Release lock
+```
+
+#### Config/Registry Versioning & Migration
+
+1. Validate schema version on load; refuse to proceed with unsupported versions and show upgrade guidance
+2. Always write via temp file + atomic rename, and keep a timestamped backup before migration
+3. On version bump, run explicit migration steps; keep migrations idempotent and test-covered
+4. If corruption detected, offer auto-restore from latest backup and log the recovery path
 
 ---
 
@@ -657,6 +733,34 @@ test_config_save
 test_config_get_value
 test_config_set_value
 test_config_expand_tilde
+```
+
+#### Dependency Module Tests
+```
+test_check_dependency_exists
+test_check_dependency_missing
+test_check_multiple_dependencies
+test_warn_optional_dependencies
+test_install_command_generation_macos
+test_install_command_generation_linux
+```
+
+#### Registry File Locking Tests
+```
+test_registry_lock_acquire
+test_registry_lock_timeout
+test_registry_concurrent_writes_blocked
+test_registry_atomic_write
+test_registry_lock_cleanup_on_error
+```
+
+#### Rollback Tests
+```
+test_rollback_after_branch_creation
+test_rollback_after_worktree_creation
+test_rollback_after_tmux_creation
+test_rollback_full_cleanup
+test_rollback_idempotent
 ```
 
 #### Tmux Module Tests
@@ -702,6 +806,33 @@ test_resume_after_session_death
   3. Open workspace
   4. Verify session recreated
   5. Verify claude --resume called
+
+test_concurrent_registry_access
+  1. Start two ccw processes simultaneously
+  2. Both try to create workspaces
+  3. Verify registry remains consistent
+  4. Verify both workspaces created successfully
+
+test_partial_failure_rollback
+  1. Mock tmux to fail on session creation
+  2. Attempt to create workspace
+  3. Verify branch and worktree are cleaned up
+  4. Verify registry not updated
+  5. Verify no orphaned resources
+
+test_missing_dependencies
+  1. Rename tmux binary temporarily
+  2. Attempt to create workspace
+  3. Verify clear error message
+  4. Verify install instructions shown
+  5. Restore tmux and retry successfully
+
+test_registry_corruption_recovery
+  1. Create valid workspace
+  2. Manually delete worktree directory
+  3. Run ls (should detect inconsistency)
+  4. Verify warning shown
+  5. Remove workspace should still work
 ```
 
 ### End-to-End Tests
@@ -781,11 +912,15 @@ PHASE 1: Foundation
 ├── T1.1: Project setup (repo, build system, CI)
 ├── T1.2: Config module (load, save, defaults)
 ├── T1.3: Registry module (load, save, CRUD)
-└── T1.4: CLI skeleton (argument parsing, help)
+├── T1.4: CLI skeleton (argument parsing, help)
+├── T1.5: Dependency checking module (check/warn for git, tmux, claude, lazygit)
+├── T1.6: File locking for registry operations
+├── T1.7: Claude CLI behavior verification (resume/rename timing and flags)
+└── T1.8: Config/registry schema migration + backup strategy
 
 PHASE 2: Git Operations
 ├── T2.1: Repo validation
-├── T2.2: Branch operations (create, delete, check merged)
+├── T2.2: Branch operations (create, delete, check merged) with upstream detection
 ├── T2.3: Worktree operations (create, remove, list)
 └── T2.4: Git module tests
 
@@ -796,15 +931,16 @@ PHASE 3: Tmux Operations
 └── T3.4: Tmux module tests
 
 PHASE 4: Commands - Core
-├── T4.1: `ccw new` command
-├── T4.2: `ccw open` command
-├── T4.3: `ccw ls` command
-├── T4.4: `ccw rm` command
-└── T4.5: Core command tests
+├── T4.1: `ccw new` command with dependency checks
+├── T4.2: Rollback strategy for partial failures
+├── T4.3: `ccw open` command with dependency checks
+├── T4.4: `ccw ls` command
+├── T4.5: `ccw rm` command with best-effort cleanup
+└── T4.6: Core command tests (including rollback tests)
 
 PHASE 5: Commands - Extended
 ├── T5.1: `ccw info` command
-├── T5.2: `ccw stale` command
+├── T5.2: `ccw stale` command with --force option
 ├── T5.3: `ccw config` command
 ├── T5.4: Partial/fuzzy workspace matching
 └── T5.5: Extended command tests
@@ -813,8 +949,9 @@ PHASE 6: Polish
 ├── T6.1: Colored output
 ├── T6.2: Tab completion (bash, zsh, fish)
 ├── T6.3: Error messages and suggestions
-├── T6.4: Integration tests
-└── T6.5: Documentation (README, man page)
+├── T6.4: Integration tests (including concurrency tests)
+├── T6.5: Documentation (README, man page)
+└── T6.6: CI dependency strategy (Claude CLI install/mocking for integration/E2E)
 
 PHASE 7: Release
 ├── T7.1: End-to-end tests
@@ -830,40 +967,72 @@ graph TD
     T1.1[T1.1: Project Setup] --> T1.2[T1.2: Config Module]
     T1.1 --> T1.3[T1.3: Registry Module]
     T1.1 --> T1.4[T1.4: CLI Skeleton]
-    
+    T1.1 --> T1.5[T1.5: Dependency Checking]
+    T1.1 --> T1.7[T1.7: Claude CLI Verification]
+    T1.1 --> T1.8[T1.8: Config/Registry Migration]
+    T1.3 --> T1.6[T1.6: File Locking]
+    T1.3 --> T1.8
+
     T1.2 --> T2.1[T2.1: Repo Validation]
-    T1.3 --> T2.1
+    T1.6 --> T2.1
     T2.1 --> T2.2[T2.2: Branch Operations]
     T2.2 --> T2.3[T2.3: Worktree Operations]
     T2.3 --> T2.4[T2.4: Git Module Tests]
-    
+
     T1.4 --> T3.1[T3.1: Session Operations]
     T3.1 --> T3.2[T3.2: Pane Operations]
     T3.2 --> T3.3[T3.3: iTerm2 -CC Mode]
     T3.3 --> T3.4[T3.4: Tmux Module Tests]
-    
-    T2.4 --> T4.1[T4.1: ccw new]
+
+    T1.2 --> T4.1
+    T1.3 --> T4.1
+    T1.6 --> T4.1
+    T1.5 --> T4.1[T4.1: ccw new with deps check]
+    T2.2 --> T4.1
+    T2.3 --> T4.1
+    T3.1 --> T4.1
+    T3.2 --> T4.1
+    T2.3 --> T4.5[T4.5: ccw rm with best-effort]
+    T3.1 --> T4.5
+    T1.3 --> T4.5
+    T1.6 --> T4.5
+    T2.4 --> T4.1
     T3.4 --> T4.1
-    T4.1 --> T4.2[T4.2: ccw open]
-    T4.2 --> T4.3[T4.3: ccw ls]
-    T4.3 --> T4.4[T4.4: ccw rm]
-    T4.4 --> T4.5[T4.5: Core Command Tests]
-    
-    T4.5 --> T5.1[T5.1: ccw info]
-    T4.5 --> T5.2[T5.2: ccw stale]
-    T4.5 --> T5.3[T5.3: ccw config]
-    T5.1 --> T5.4[T5.4: Fuzzy Matching]
+    T4.1 --> T4.2[T4.2: Rollback Strategy]
+    T1.2 --> T4.3[T4.3: ccw open with deps check]
+    T1.3 --> T4.3
+    T1.6 --> T4.3
+    T2.3 --> T4.3
+    T3.1 --> T4.3
+    T3.2 --> T4.3
+    T4.2 --> T4.3
+    T1.3 --> T4.4[T4.4: ccw ls]
+    T1.6 --> T4.4
+    T2.3 --> T4.4
+    T3.1 --> T4.4
+    T4.4 --> T4.5[T4.5: ccw rm with best-effort]
+    T4.5 --> T4.6[T4.6: Core Command Tests]
+
+    T4.6 --> T5.1[T5.1: ccw info]
+    T2.2 --> T5.2[T5.2: ccw stale with --force]
+    T4.4 --> T5.2
+    T1.2 --> T5.3[T5.3: ccw config]
+    T4.6 --> T5.3
+    T4.4 --> T5.4[T5.4: Fuzzy Matching]
     T5.4 --> T5.5[T5.5: Extended Command Tests]
-    
+
     T5.5 --> T6.1[T6.1: Colored Output]
     T5.5 --> T6.2[T6.2: Tab Completion]
     T5.5 --> T6.3[T6.3: Error Messages]
-    T6.1 --> T6.4[T6.4: Integration Tests]
+    T6.1 --> T6.4[T6.4: Integration Tests + Concurrency]
     T6.2 --> T6.4
     T6.3 --> T6.4
     T6.4 --> T6.5[T6.5: Documentation]
-    
+    T4.6 --> T6.6[T6.6: CI Dependency Strategy]
+    T6.4 --> T6.6
+
     T6.5 --> T7.1[T7.1: E2E Tests]
+    T6.6 --> T7.1
     T7.1 --> T7.2[T7.2: Homebrew Formula]
     T7.2 --> T7.3[T7.3: Release Automation]
     T7.3 --> T7.4[T7.4: Launch]
@@ -872,10 +1041,12 @@ graph TD
 ### Critical Path
 
 ```
-T1.1 → T1.2 → T2.1 → T2.2 → T2.3 → T2.4 → T4.1 → T4.2 → T4.4 → T4.5 → T6.4 → T7.1 → T7.4
+T1.1 → T1.5 → T1.2 → T1.3 → T1.6 → T2.1 → T2.2 → T2.3 → T3.1 → T3.2 → T4.1 → T4.2 → T4.3 → T4.5 → T4.6 → T6.4 → T6.6 → T7.1 → T7.4
 ```
 
-Estimated time: ~40-60 hours for MVP (through T4.5)
+Estimated time: ~60-90 hours for solid MVP (through T4.6)
+- Additional time accounts for file locking, rollback logic, and comprehensive testing
+- Concurrency and error recovery add complexity but are critical for reliability
 
 ---
 
@@ -941,6 +1112,46 @@ Tables:         Tablewriter (github.com/olekukonko/tablewriter)
 
 3. **Binary download**
    - GitHub releases with binaries for macOS (arm64, amd64) and Linux
+
+---
+
+## 8. Feasibility & Risk Mitigation
+
+This section documents key feasibility challenges identified and their mitigations.
+
+### Risk Mitigation Summary
+
+| Risk | Impact | Mitigation | Status |
+|------|--------|------------|--------|
+| Missing dependencies | High - tool won't work | Upfront dependency checking with clear install instructions (T1.5) | ✅ Planned |
+| Registry corruption from concurrent access | High - data loss | File locking with atomic writes (T1.6) | ✅ Planned |
+| Partial failures leave orphaned resources | Medium - confusion, disk waste | Rollback strategy for creation, best-effort for deletion (T4.2) | ✅ Planned |
+| Claude CLI resume behavior unknown | Medium - core feature may not work | Document exact behavior needed; implement fallback to picker | ⚠️ Verify |
+| Worktree/registry mismatch | Low - fixable manually | Show warnings in `ccw ls`, allow forced removal | ✅ Planned |
+| Merged branch detection failures | Low - manual override available | Add `--force` option to `ccw stale` (FR5.4) | ✅ Planned |
+
+### Key Design Decisions
+
+1. **Fail Fast Philosophy**: Check all dependencies before starting any operation to avoid partial failures
+2. **Atomic with Rollback**: All creation operations support rollback; deletion is best-effort
+3. **File Locking**: Prevent concurrent registry corruption using lock files
+4. **Clear Error Messages**: Every error includes installation/fix instructions
+5. **Graceful Degradation**: Optional dependencies (lazygit) generate warnings, not errors
+
+### Verification Needed
+
+Before implementation Phase 4, verify:
+- [ ] Claude CLI supports `claude --resume {session_name}` exactly as specified
+- [ ] Claude CLI session renaming behavior and timing
+- [ ] iTerm2 -CC mode behavior matches expectations
+
+### Testing Priorities
+
+Critical tests for reliability:
+1. **Concurrent access tests** - Ensure registry locking works
+2. **Partial failure tests** - Verify rollback cleans up completely
+3. **Missing dependency tests** - Confirm clear error messages
+4. **Best-effort cleanup tests** - Ensure `ccw rm` works even with missing resources
 
 ---
 
