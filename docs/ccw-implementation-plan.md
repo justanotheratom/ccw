@@ -919,10 +919,10 @@ PHASE 1: Foundation
 └── T1.8: Config/registry schema migration + backup strategy ✅
 
 PHASE 2: Git Operations
-├── T2.1: Repo validation
-├── T2.2: Branch operations (create, delete, check merged) with upstream detection
-├── T2.3: Worktree operations (create, remove, list)
-└── T2.4: Git module tests
+├── T2.1: Repo validation ✅
+├── T2.2: Branch operations (create, delete, check merged) with upstream detection ✅
+├── T2.3: Worktree operations (create, remove, list) ✅
+└── T2.4: Git module tests ✅
 
 PHASE 3: Tmux Operations
 ├── T3.1: Session operations (create, kill, exists, attach)

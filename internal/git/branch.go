@@ -1,0 +1,157 @@
+package git
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+)
+
+var (
+	ErrBranchExists      = errors.New("branch already exists")
+	ErrBranchNotMerged   = errors.New("branch not merged")
+	ErrBranchNotFound    = errors.New("branch not found")
+	ErrRemoteBranchFound = errors.New("remote branch already exists")
+)
+
+func BranchExists(repoPath, branch string) (bool, error) {
+	_, err := runGit(context.Background(), repoPath, "show-ref", "--verify", "--quiet", "refs/heads/"+branch)
+	if err == nil {
+		return true, nil
+	}
+
+	if code, ok := exitCode(err); ok && code == 1 {
+		return false, nil
+	}
+
+	return false, err
+}
+
+func RemoteBranchExists(repoPath, remote, branch string) (bool, error) {
+	out, err := runGit(context.Background(), repoPath, "ls-remote", "--heads", remote, branch)
+	if err != nil {
+		if code, ok := exitCode(err); ok && code == 128 {
+			// Treat missing remote as no remote branch found.
+			return false, nil
+		}
+		return false, err
+	}
+	return strings.TrimSpace(out) != "", nil
+}
+
+func resolveBaseRef(repoPath, baseBranch string) (string, error) {
+	if baseBranch == "" {
+		baseBranch = "main"
+	}
+
+	// Prefer remote base branch.
+	if _, err := runGit(context.Background(), repoPath, "rev-parse", "--verify", "--quiet", "origin/"+baseBranch); err == nil {
+		return "origin/" + baseBranch, nil
+	}
+
+	if _, err := runGit(context.Background(), repoPath, "rev-parse", "--verify", "--quiet", baseBranch); err == nil {
+		return baseBranch, nil
+	}
+
+	return "", fmt.Errorf("base branch %s not found", baseBranch)
+}
+
+func CreateBranch(repoPath, branch, baseBranch string, fetch bool) error {
+	if fetch {
+		if err := Fetch(repoPath, true); err != nil {
+			return err
+		}
+	}
+
+	if exists, err := BranchExists(repoPath, branch); err != nil {
+		return err
+	} else if exists {
+		return ErrBranchExists
+	}
+
+	if exists, err := RemoteBranchExists(repoPath, "origin", branch); err != nil {
+		return err
+	} else if exists {
+		return ErrRemoteBranchFound
+	}
+
+	baseRef, err := resolveBaseRef(repoPath, baseBranch)
+	if err != nil {
+		return err
+	}
+
+	if _, err := runGit(context.Background(), repoPath, "branch", branch, baseRef); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func DeleteBranch(repoPath, branch string, force bool) error {
+	args := []string{"branch"}
+	if force {
+		args = append(args, "-D", branch)
+	} else {
+		args = append(args, "-d", branch)
+	}
+
+	if _, err := runGit(context.Background(), repoPath, args...); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return ErrBranchNotFound
+		}
+		if !force && strings.Contains(err.Error(), "not fully merged") {
+			return ErrBranchNotMerged
+		}
+		return err
+	}
+
+	return nil
+}
+
+func IsMerged(repoPath, branch, baseBranch string, fetch bool) (bool, error) {
+	if fetch {
+		if err := Fetch(repoPath, true); err != nil {
+			return false, err
+		}
+	}
+
+	baseRef, err := resolveBaseRef(repoPath, baseBranch)
+	if err != nil {
+		return false, err
+	}
+
+	_, err = runGit(context.Background(), repoPath, "merge-base", "--is-ancestor", branch, baseRef)
+	if err == nil {
+		return true, nil
+	}
+
+	if code, ok := exitCode(err); ok && code == 1 {
+		return false, nil
+	}
+
+	return false, err
+}
+
+func HasUnpushedCommits(repoPath, branch string) (bool, error) {
+	if _, err := runGit(context.Background(), repoPath, "rev-parse", "--verify", "--quiet", "origin/"+branch); err != nil {
+		// If remote branch is missing, treat all commits as unpushed.
+		return true, nil
+	}
+
+	out, err := runGit(context.Background(), repoPath, "rev-list", "--left-only", "--count", branch+"...origin/"+branch)
+	if err != nil {
+		return false, err
+	}
+
+	return strings.TrimSpace(out) != "0", nil
+}
+
+func TouchBranch(repoPath, branch string) error {
+	_, err := runGit(context.Background(), repoPath, "update-ref", "--no-deref", "--create-reflog", "refs/heads/"+branch, "HEAD")
+	return err
+}
+
+func Now() time.Time {
+	return time.Now().UTC()
+}
