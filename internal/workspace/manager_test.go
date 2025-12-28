@@ -216,3 +216,62 @@ func TestRemoveWorkspaceRemovesResources(t *testing.T) {
 		t.Fatalf("expected registry entry to be removed")
 	}
 }
+
+func TestWorkspaceInfoPartialMatch(t *testing.T) {
+	reposRoot, repoName := initRepoForManager(t)
+	tmuxStub := newStubTmux()
+	mgr := newManagerForTest(t, reposRoot, tmuxStub)
+
+	if _, err := mgr.CreateWorkspace(context.Background(), repoName, "feature/test", CreateOptions{NoFetch: true, NoAttach: true}); err != nil {
+		t.Fatalf("CreateWorkspace: %v", err)
+	}
+
+	info, err := mgr.WorkspaceInfo(context.Background(), "feature")
+	if err != nil {
+		t.Fatalf("WorkspaceInfo: %v", err)
+	}
+	if info.ID != WorkspaceID(repoName, "feature/test") {
+		t.Fatalf("unexpected workspace resolved: %s", info.ID)
+	}
+}
+
+func TestStaleWorkspacesDetectsMerged(t *testing.T) {
+	reposRoot, repoName := initRepoForManager(t)
+	tmuxStub := newStubTmux()
+	mgr := newManagerForTest(t, reposRoot, tmuxStub)
+
+	if _, err := mgr.CreateWorkspace(context.Background(), repoName, "feature/test", CreateOptions{NoFetch: true, NoAttach: true}); err != nil {
+		t.Fatalf("CreateWorkspace: %v", err)
+	}
+
+	repoPath := filepath.Join(reposRoot, repoName)
+	worktreePath, _ := git.DefaultWorktreePath(filepath.Join(mgr.root, "worktrees"), SafeName(repoName, "feature/test"))
+	if err := os.WriteFile(filepath.Join(worktreePath, "file.txt"), []byte("hello"), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	runGitCmd(t, worktreePath, "add", ".")
+	runGitCmd(t, worktreePath, "commit", "-m", "feature work")
+	runGitCmd(t, repoPath, "merge", "--no-ff", "feature/test")
+
+	stale, err := mgr.StaleWorkspaces(context.Background(), false)
+	if err != nil {
+		t.Fatalf("StaleWorkspaces: %v", err)
+	}
+	if len(stale) != 1 || stale[0].ID != WorkspaceID(repoName, "feature/test") {
+		t.Fatalf("expected one stale workspace, got %+v", stale)
+	}
+}
+
+func TestSetConfigValue(t *testing.T) {
+	reposRoot, _ := initRepoForManager(t)
+	tmuxStub := newStubTmux()
+	mgr := newManagerForTest(t, reposRoot, tmuxStub)
+
+	cfg, err := mgr.SetConfigValue("default_base", "develop")
+	if err != nil {
+		t.Fatalf("SetConfigValue: %v", err)
+	}
+	if cfg.DefaultBase != "develop" {
+		t.Fatalf("expected default_base to change")
+	}
+}

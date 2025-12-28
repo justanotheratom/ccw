@@ -939,11 +939,11 @@ PHASE 4: Commands - Core
 └── T4.6: Core command tests (including rollback tests) ✅
 
 PHASE 5: Commands - Extended
-├── T5.1: `ccw info` command
-├── T5.2: `ccw stale` command with --force option
-├── T5.3: `ccw config` command
-├── T5.4: Partial/fuzzy workspace matching
-└── T5.5: Extended command tests
+├── T5.1: `ccw info` command ✅
+├── T5.2: `ccw stale` command with --force option ✅
+├── T5.3: `ccw config` command ✅
+├── T5.4: Partial/fuzzy workspace matching ✅
+└── T5.5: Extended command tests ✅
 
 PHASE 6: Polish
 ├── T6.1: Colored output

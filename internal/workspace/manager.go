@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -249,14 +250,9 @@ func (m *Manager) OpenWorkspace(ctx context.Context, id string, resumeClaude boo
 		return err
 	}
 
-	reg, err := m.regStore.Read(ctx)
+	resolvedID, ws, err := m.lookupWorkspace(ctx, id)
 	if err != nil {
 		return err
-	}
-
-	ws, ok := reg.Workspaces[id]
-	if !ok {
-		return fmt.Errorf("workspace %s not found", id)
 	}
 
 	sessionExists, err := m.tmux.SessionExists(ws.TmuxSession)
@@ -270,7 +266,7 @@ func (m *Manager) OpenWorkspace(ctx context.Context, id string, resumeClaude boo
 		}
 	}
 
-	if err := m.updateLastAccessed(ctx, id); err != nil {
+	if err := m.updateLastAccessed(ctx, resolvedID); err != nil {
 		return err
 	}
 
@@ -324,14 +320,9 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, id string, opts RemoveOpt
 		return err
 	}
 
-	reg, err := m.regStore.Read(ctx)
+	resolvedID, ws, err := m.lookupWorkspace(ctx, id)
 	if err != nil {
 		return err
-	}
-
-	ws, ok := reg.Workspaces[id]
-	if !ok {
-		return fmt.Errorf("workspace %s not found", id)
 	}
 
 	var errs []error
@@ -371,7 +362,7 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, id string, opts RemoveOpt
 	}
 
 	if err := m.regStore.Update(ctx, func(reg *Registry) error {
-		reg.Remove(id)
+		reg.Remove(resolvedID)
 		return nil
 	}); err != nil {
 		errs = append(errs, fmt.Errorf("update registry: %w", err))
@@ -393,6 +384,122 @@ func combineErrors(errs []error) error {
 		messages = append(messages, err.Error())
 	}
 	return errors.New(strings.Join(messages, "; "))
+}
+
+func (m *Manager) lookupWorkspace(ctx context.Context, query string) (string, Workspace, error) {
+	reg, err := m.regStore.Read(ctx)
+	if err != nil {
+		return "", Workspace{}, err
+	}
+
+	if ws, ok := reg.Workspaces[query]; ok {
+		return query, ws, nil
+	}
+
+	matches := reg.FindByPartialName(query)
+	if len(matches) == 1 {
+		ws := reg.Workspaces[matches[0]]
+		return matches[0], ws, nil
+	}
+
+	if len(matches) > 1 {
+		return "", Workspace{}, fmt.Errorf("multiple workspaces match: %s", strings.Join(matches, ", "))
+	}
+
+	return "", Workspace{}, fmt.Errorf("workspace %s not found", query)
+}
+
+func (m *Manager) WorkspaceInfo(ctx context.Context, query string) (WorkspaceStatus, error) {
+	id, ws, err := m.lookupWorkspace(ctx, query)
+	if err != nil {
+		return WorkspaceStatus{}, err
+	}
+
+	alive, err := m.tmux.SessionExists(ws.TmuxSession)
+	if err != nil {
+		alive = false
+	}
+
+	return WorkspaceStatus{
+		ID:           id,
+		Workspace:    ws,
+		SessionAlive: alive,
+	}, nil
+}
+
+func (m *Manager) StaleWorkspaces(ctx context.Context, force bool) ([]WorkspaceStatus, error) {
+	if err := m.checkDepsByName("git"); err != nil {
+		return nil, err
+	}
+
+	reg, err := m.regStore.Read(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []WorkspaceStatus
+	for id, ws := range reg.Workspaces {
+		merged, err := git.IsMerged(ws.RepoPath, ws.Branch, ws.BaseBranch, false)
+		if err != nil {
+			if force {
+				continue
+			}
+			return nil, err
+		}
+		if merged {
+			alive, err := m.tmux.SessionExists(ws.TmuxSession)
+			if err != nil {
+				alive = false
+			}
+			results = append(results, WorkspaceStatus{
+				ID:           id,
+				Workspace:    ws,
+				SessionAlive: alive,
+			})
+		}
+	}
+
+	sort.Slice(results, func(i, j int) bool { return results[i].ID < results[j].ID })
+	return results, nil
+}
+
+func (m *Manager) GetConfig() config.Config {
+	return m.cfg
+}
+
+func (m *Manager) SetConfigValue(key, value string) (config.Config, error) {
+	cfg := m.cfg
+	switch key {
+	case "repos_dir":
+		cfg.ReposDir = value
+	case "default_base":
+		cfg.DefaultBase = value
+	case "iterm_cc_mode":
+		cfg.ITermCCMode = strings.ToLower(value) == "true"
+	case "claude_rename_delay":
+		delay, err := strconv.Atoi(value)
+		if err != nil {
+			return cfg, fmt.Errorf("invalid claude_rename_delay: %w", err)
+		}
+		cfg.ClaudeRenameDelay = delay
+	default:
+		return cfg, fmt.Errorf("unknown config key: %s", key)
+	}
+
+	if err := m.cfgStore.Save(cfg); err != nil {
+		return cfg, err
+	}
+	m.cfg = cfg
+	return cfg, nil
+}
+
+func (m *Manager) ResetConfig() (config.Config, error) {
+	cfg := config.Default()
+	if err := m.cfgStore.Save(cfg); err != nil {
+		return cfg, err
+	}
+	m.cfg = cfg
+	return cfg, nil
 }
 
 type rollback struct {

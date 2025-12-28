@@ -1,8 +1,11 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 
+	"github.com/ccw/ccw/internal/workspace"
 	"github.com/spf13/cobra"
 )
 
@@ -11,7 +14,44 @@ var staleCmd = &cobra.Command{
 	Short: "List workspaces with merged branches",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return fmt.Errorf("stale: not implemented yet")
+		remove, _ := cmd.Flags().GetBool("rm")
+		force, _ := cmd.Flags().GetBool("force")
+
+		mgr, err := newManager()
+		if err != nil {
+			return err
+		}
+
+		stale, err := mgr.StaleWorkspaces(cmd.Context(), force)
+		if err != nil {
+			return err
+		}
+
+		if !remove {
+			if len(stale) == 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "no stale workspaces found")
+				return nil
+			}
+			for _, st := range stale {
+				fmt.Fprintf(cmd.OutOrStdout(), "%s (branch: %s)\n", st.ID, st.Workspace.Branch)
+			}
+			return nil
+		}
+
+		var errs []string
+		for _, st := range stale {
+			if err := mgr.RemoveWorkspace(cmd.Context(), st.ID, workspace.RemoveOptions{Force: force}); err != nil {
+				errs = append(errs, fmt.Sprintf("%s: %v", st.ID, err))
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "removed %s\n", st.ID)
+			}
+		}
+
+		if len(errs) > 0 {
+			return errors.New(strings.Join(errs, "; "))
+		}
+
+		return nil
 	},
 }
 
