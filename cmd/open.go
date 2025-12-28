@@ -11,7 +11,20 @@ var openCmd = &cobra.Command{
 	Short: "Open or attach to an existing workspace",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return fmt.Errorf("open: not implemented yet")
+		id := args[0]
+		noResume, _ := cmd.Flags().GetBool("no-resume")
+
+		mgr, err := newManager()
+		if err != nil {
+			return err
+		}
+
+		if err := mgr.OpenWorkspace(cmd.Context(), id, !noResume); err != nil {
+			return err
+		}
+
+		fmt.Fprintf(cmd.OutOrStdout(), "opened workspace %s\n", id)
+		return nil
 	},
 }
 

@@ -931,12 +931,12 @@ PHASE 3: Tmux Operations
 └── T3.4: Tmux module tests ✅
 
 PHASE 4: Commands - Core
-├── T4.1: `ccw new` command with dependency checks
-├── T4.2: Rollback strategy for partial failures
-├── T4.3: `ccw open` command with dependency checks
-├── T4.4: `ccw ls` command
-├── T4.5: `ccw rm` command with best-effort cleanup
-└── T4.6: Core command tests (including rollback tests)
+├── T4.1: `ccw new` command with dependency checks ✅
+├── T4.2: Rollback strategy for partial failures ✅
+├── T4.3: `ccw open` command with dependency checks ✅
+├── T4.4: `ccw ls` command ✅
+├── T4.5: `ccw rm` command with best-effort cleanup ✅
+└── T4.6: Core command tests (including rollback tests) ✅
 
 PHASE 5: Commands - Extended
 ├── T5.1: `ccw info` command

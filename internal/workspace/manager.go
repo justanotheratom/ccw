@@ -1,0 +1,410 @@
+package workspace
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/ccw/ccw/internal/config"
+	"github.com/ccw/ccw/internal/deps"
+	"github.com/ccw/ccw/internal/git"
+	"github.com/ccw/ccw/internal/tmux"
+)
+
+type TmuxRunner interface {
+	SessionExists(name string) (bool, error)
+	CreateSession(name, path string, detached bool) error
+	KillSession(name string) error
+	AttachSession(name string) error
+	SplitPane(session string, horizontal bool, path string) error
+	SendKeys(target string, keys []string, enter bool) error
+}
+
+type Manager struct {
+	root     string
+	cfg      config.Config
+	cfgStore *config.Store
+	regStore *Store
+	tmux     TmuxRunner
+
+	lazygitAvailable bool
+	skipDeps         bool
+}
+
+type CreateOptions struct {
+	BaseBranch string
+	NoAttach   bool
+	NoFetch    bool
+	Message    string
+}
+
+type RemoveOptions struct {
+	Force        bool
+	KeepBranch   bool
+	KeepWorktree bool
+}
+
+type WorkspaceStatus struct {
+	ID           string
+	Workspace    Workspace
+	SessionAlive bool
+}
+
+func NewManager(root string, tmuxRunner TmuxRunner) (*Manager, error) {
+	if root == "" {
+		if env := os.Getenv("CCW_HOME"); env != "" {
+			root = env
+		}
+	}
+
+	cfgStore, err := config.NewStore(root)
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := cfgStore.Load()
+	if err != nil {
+		return nil, err
+	}
+
+	if root == "" {
+		root = cfgStore.Root()
+	}
+
+	regStore, err := NewStore(root)
+	if err != nil {
+		return nil, err
+	}
+
+	if tmuxRunner == nil {
+		tmuxRunner = tmux.NewRunner(cfg.ITermCCMode)
+	}
+
+	m := &Manager{
+		root:     root,
+		cfg:      cfg,
+		cfgStore: cfgStore,
+		regStore: regStore,
+		tmux:     tmuxRunner,
+	}
+
+	m.detectOptionalDeps()
+	return m, nil
+}
+
+func (m *Manager) detectOptionalDeps() {
+	for _, dep := range deps.DefaultDependencies() {
+		if dep.Name != "lazygit" {
+			continue
+		}
+		res := deps.Check(dep)
+		m.lazygitAvailable = res.Found
+	}
+}
+
+func (m *Manager) checkDepsByName(names ...string) error {
+	if m.skipDeps {
+		return nil
+	}
+
+	var toCheck []deps.Dependency
+	all := deps.DefaultDependencies()
+	if len(names) == 0 {
+		toCheck = all
+	} else {
+		for _, name := range names {
+			for _, dep := range all {
+				if dep.Name == name {
+					toCheck = append(toCheck, dep)
+				}
+			}
+		}
+	}
+
+	results := deps.CheckAll(toCheck)
+	for _, res := range results {
+		if res.Dependency.Name == "lazygit" {
+			m.lazygitAvailable = res.Found
+		}
+	}
+
+	missing := deps.Missing(results, false)
+	if len(missing) == 0 {
+		return nil
+	}
+
+	var hints []string
+	for _, res := range missing {
+		hints = append(hints, fmt.Sprintf("%s (%s)", res.Dependency.DisplayName, res.Dependency.InstallHint))
+	}
+	return fmt.Errorf("missing dependencies: %s", strings.Join(hints, "; "))
+}
+
+func (m *Manager) CreateWorkspace(ctx context.Context, repo, branch string, opts CreateOptions) (Workspace, error) {
+	if err := m.checkDepsByName("git", "tmux", "claude"); err != nil {
+		return Workspace{}, err
+	}
+
+	reposDir, err := m.cfg.ExpandedReposDir()
+	if err != nil {
+		return Workspace{}, err
+	}
+
+	repoPath := filepath.Join(reposDir, repo)
+	if _, err := git.ValidateRepo(repoPath); err != nil {
+		return Workspace{}, err
+	}
+
+	baseBranch := opts.BaseBranch
+	if baseBranch == "" {
+		baseBranch = m.cfg.DefaultBase
+	}
+
+	worktreeRoot := filepath.Join(m.root, "worktrees")
+	workspaceID := WorkspaceID(repo, branch)
+	safeName := SafeName(repo, branch)
+	worktreePath, err := git.DefaultWorktreePath(worktreeRoot, safeName)
+	if err != nil {
+		return Workspace{}, err
+	}
+
+	rb := rollback{}
+
+	if err := git.CreateBranch(repoPath, branch, baseBranch, !opts.NoFetch); err != nil {
+		return Workspace{}, err
+	}
+	rb.Add(func() { _ = git.DeleteBranch(repoPath, branch, true) })
+
+	if err := git.CreateWorktree(repoPath, worktreePath, branch); err != nil {
+		rb.Run()
+		return Workspace{}, err
+	}
+	rb.Add(func() { _ = git.RemoveWorktree(repoPath, worktreePath, true) })
+
+	if err := m.bootstrapSession(safeName, worktreePath, false); err != nil {
+		rb.Run()
+		return Workspace{}, err
+	}
+	rb.Add(func() { _ = m.tmux.KillSession(safeName) })
+
+	now := time.Now().UTC()
+	ws := Workspace{
+		Repo:           repo,
+		RepoPath:       repoPath,
+		Branch:         branch,
+		BaseBranch:     baseBranch,
+		WorktreePath:   worktreePath,
+		ClaudeSession:  safeName,
+		TmuxSession:    safeName,
+		CreatedAt:      now,
+		LastAccessedAt: now,
+	}
+
+	if err := m.regStore.Update(ctx, func(reg *Registry) error {
+		return reg.Add(workspaceID, ws)
+	}); err != nil {
+		rb.Run()
+		return Workspace{}, err
+	}
+
+	if !opts.NoAttach {
+		if err := m.tmux.AttachSession(safeName); err != nil {
+			return ws, err
+		}
+	}
+
+	return ws, nil
+}
+
+func (m *Manager) bootstrapSession(name, path string, resume bool) error {
+	if err := m.tmux.CreateSession(name, path, true); err != nil {
+		return err
+	}
+
+	if err := m.tmux.SplitPane(name, true, path); err != nil {
+		return err
+	}
+
+	claudeCmd := "claude"
+	if resume {
+		claudeCmd = fmt.Sprintf("claude --resume %s", name)
+	}
+	if err := m.tmux.SendKeys(name+":0.0", []string{claudeCmd}, true); err != nil {
+		return err
+	}
+
+	if m.lazygitAvailable {
+		_ = m.tmux.SendKeys(name+":0.1", []string{"lazygit"}, true)
+	}
+
+	return nil
+}
+
+func (m *Manager) OpenWorkspace(ctx context.Context, id string, resumeClaude bool) error {
+	if err := m.checkDepsByName("git", "tmux", "claude"); err != nil {
+		return err
+	}
+
+	reg, err := m.regStore.Read(ctx)
+	if err != nil {
+		return err
+	}
+
+	ws, ok := reg.Workspaces[id]
+	if !ok {
+		return fmt.Errorf("workspace %s not found", id)
+	}
+
+	sessionExists, err := m.tmux.SessionExists(ws.TmuxSession)
+	if err != nil {
+		return err
+	}
+
+	if !sessionExists {
+		if err := m.bootstrapSession(ws.TmuxSession, ws.WorktreePath, resumeClaude); err != nil {
+			return err
+		}
+	}
+
+	if err := m.updateLastAccessed(ctx, id); err != nil {
+		return err
+	}
+
+	return m.tmux.AttachSession(ws.TmuxSession)
+}
+
+func (m *Manager) updateLastAccessed(ctx context.Context, id string) error {
+	now := time.Now().UTC()
+	return m.regStore.Update(ctx, func(reg *Registry) error {
+		ws, ok := reg.Workspaces[id]
+		if !ok {
+			return fmt.Errorf("workspace %s not found", id)
+		}
+		ws.LastAccessedAt = now
+		reg.Workspaces[id] = ws
+		return nil
+	})
+}
+
+func (m *Manager) ListWorkspaces(ctx context.Context) ([]WorkspaceStatus, error) {
+	reg, err := m.regStore.Read(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make([]string, 0, len(reg.Workspaces))
+	for id := range reg.Workspaces {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	var statuses []WorkspaceStatus
+	for _, id := range ids {
+		ws := reg.Workspaces[id]
+		alive, err := m.tmux.SessionExists(ws.TmuxSession)
+		if err != nil {
+			alive = false
+		}
+		statuses = append(statuses, WorkspaceStatus{
+			ID:           id,
+			Workspace:    ws,
+			SessionAlive: alive,
+		})
+	}
+
+	return statuses, nil
+}
+
+func (m *Manager) RemoveWorkspace(ctx context.Context, id string, opts RemoveOptions) error {
+	if err := m.checkDepsByName("git", "tmux"); err != nil {
+		return err
+	}
+
+	reg, err := m.regStore.Read(ctx)
+	if err != nil {
+		return err
+	}
+
+	ws, ok := reg.Workspaces[id]
+	if !ok {
+		return fmt.Errorf("workspace %s not found", id)
+	}
+
+	var errs []error
+
+	if err := m.tmux.KillSession(ws.TmuxSession); err != nil && !errors.Is(err, tmux.ErrSessionMissing) {
+		errs = append(errs, fmt.Errorf("kill session: %w", err))
+	}
+
+	if !opts.KeepWorktree {
+		if err := git.RemoveWorktree(ws.RepoPath, ws.WorktreePath, true); err != nil {
+			errs = append(errs, fmt.Errorf("remove worktree: %w", err))
+		}
+	}
+
+	if !opts.KeepBranch {
+		if !opts.Force {
+			merged, err := git.IsMerged(ws.RepoPath, ws.Branch, ws.BaseBranch, true)
+			if err != nil {
+				return err
+			}
+			if !merged {
+				return git.ErrBranchNotMerged
+			}
+
+			unpushed, err := git.HasUnpushedCommits(ws.RepoPath, ws.Branch)
+			if err != nil {
+				return err
+			}
+			if unpushed {
+				return fmt.Errorf("branch has unpushed commits")
+			}
+		}
+
+		if err := git.DeleteBranch(ws.RepoPath, ws.Branch, opts.Force); err != nil {
+			errs = append(errs, fmt.Errorf("delete branch: %w", err))
+		}
+	}
+
+	if err := m.regStore.Update(ctx, func(reg *Registry) error {
+		reg.Remove(id)
+		return nil
+	}); err != nil {
+		errs = append(errs, fmt.Errorf("update registry: %w", err))
+	}
+
+	if len(errs) > 0 {
+		return combineErrors(errs)
+	}
+
+	return nil
+}
+
+func combineErrors(errs []error) error {
+	if len(errs) == 0 {
+		return nil
+	}
+	messages := make([]string, 0, len(errs))
+	for _, err := range errs {
+		messages = append(messages, err.Error())
+	}
+	return errors.New(strings.Join(messages, "; "))
+}
+
+type rollback struct {
+	steps []func()
+}
+
+func (r *rollback) Add(fn func()) {
+	r.steps = append(r.steps, fn)
+}
+
+func (r *rollback) Run() {
+	for i := len(r.steps) - 1; i >= 0; i-- {
+		r.steps[i]()
+	}
+}

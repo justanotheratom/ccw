@@ -74,6 +74,10 @@ func (s *Store) Path() string {
 	return filepath.Join(s.root, configFileName)
 }
 
+func (s *Store) Root() string {
+	return s.root
+}
+
 func (s *Store) Load() (Config, error) {
 	path := s.Path()
 	data, err := os.ReadFile(path)
