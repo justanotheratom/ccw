@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -123,5 +124,40 @@ func TestExpandedReposDir(t *testing.T) {
 	}
 	if expanded == cfg.ReposDir {
 		t.Fatalf("expected expanded path, got %q", expanded)
+	}
+}
+
+func TestConfigSaveCreatesBackup(t *testing.T) {
+	tempDir := t.TempDir()
+	store, err := NewStore(tempDir)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+
+	cfg := Default()
+	if err := store.Save(cfg); err != nil {
+		t.Fatalf("initial Save: %v", err)
+	}
+
+	cfg.DefaultBase = "develop"
+	if err := store.Save(cfg); err != nil {
+		t.Fatalf("second Save: %v", err)
+	}
+
+	entries, err := os.ReadDir(tempDir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+
+	var backupFound bool
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), "config.json.bak-") {
+			backupFound = true
+			break
+		}
+	}
+
+	if !backupFound {
+		t.Fatalf("expected backup file to be created")
 	}
 }

@@ -916,7 +916,7 @@ PHASE 1: Foundation
 ├── T1.5: Dependency checking module (check/warn for git, tmux, claude, lazygit) ✅
 ├── T1.6: File locking for registry operations ✅
 ├── T1.7: Claude CLI behavior verification (resume/rename timing and flags) ✅
-└── T1.8: Config/registry schema migration + backup strategy
+└── T1.8: Config/registry schema migration + backup strategy ✅
 
 PHASE 2: Git Operations
 ├── T2.1: Repo validation

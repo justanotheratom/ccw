@@ -119,6 +119,44 @@ func TestRegistryFindByPartialName(t *testing.T) {
 	}
 }
 
+func TestRegistryBackupCreated(t *testing.T) {
+	store := newTestStore(t, 200*time.Millisecond)
+
+	err := store.Update(context.Background(), func(reg *Registry) error {
+		return reg.Add("demo/feature/test", Workspace{Repo: "demo"})
+	})
+	if err != nil {
+		t.Fatalf("initial Update: %v", err)
+	}
+
+	err = store.Update(context.Background(), func(reg *Registry) error {
+		ws, _ := reg.Get("demo/feature/test")
+		ws.Branch = "updated"
+		reg.Workspaces["demo/feature/test"] = ws
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("second Update: %v", err)
+	}
+
+	entries, err := os.ReadDir(store.root)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+
+	var backupFound bool
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), "workspaces.json.bak-") {
+			backupFound = true
+			break
+		}
+	}
+
+	if !backupFound {
+		t.Fatalf("expected registry backup to be created")
+	}
+}
+
 func TestRegistryLockBlocks(t *testing.T) {
 	store := newTestStore(t, 150*time.Millisecond)
 

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ccw/ccw/internal/storage"
 	"github.com/gofrs/flock"
 )
 
@@ -173,6 +174,10 @@ func (s *Store) save(reg Registry) error {
 
 	if err := os.MkdirAll(s.root, 0o755); err != nil {
 		return fmt.Errorf("create registry dir: %w", err)
+	}
+
+	if _, err := storage.BackupFile(s.registryPath()); err != nil {
+		return fmt.Errorf("backup existing registry: %w", err)
 	}
 
 	data, err := json.MarshalIndent(reg, "", "  ")

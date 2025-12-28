@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/ccw/ccw/internal/storage"
 )
 
 const (
@@ -105,6 +107,10 @@ func (s *Store) Save(cfg Config) error {
 
 	if err := os.MkdirAll(s.root, 0o755); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
+	}
+
+	if _, err := storage.BackupFile(s.Path()); err != nil {
+		return fmt.Errorf("backup existing config: %w", err)
 	}
 
 	data, err := json.MarshalIndent(cfg, "", "  ")
