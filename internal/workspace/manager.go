@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ccw/ccw/internal/claude"
 	"github.com/ccw/ccw/internal/config"
 	"github.com/ccw/ccw/internal/deps"
 	"github.com/ccw/ccw/internal/git"
@@ -35,6 +36,8 @@ type Manager struct {
 
 	lazygitAvailable bool
 	skipDeps         bool
+	claudeCaps       claude.Capabilities
+	capsDetected     bool
 }
 
 type CreateOptions struct {
@@ -193,7 +196,7 @@ func (m *Manager) CreateWorkspace(ctx context.Context, repo, branch string, opts
 	}
 	rb.Add(func() { _ = git.RemoveWorktree(repoPath, worktreePath, true) })
 
-	if err := m.bootstrapSession(safeName, worktreePath, false); err != nil {
+	if err := m.bootstrapSession(ctx, safeName, worktreePath, false); err != nil {
 		rb.Run()
 		return Workspace{}, err
 	}
@@ -228,7 +231,7 @@ func (m *Manager) CreateWorkspace(ctx context.Context, repo, branch string, opts
 	return ws, nil
 }
 
-func (m *Manager) bootstrapSession(name, path string, resume bool) error {
+func (m *Manager) bootstrapSession(ctx context.Context, name, path string, resume bool) error {
 	if err := m.tmux.CreateSession(name, path, true); err != nil {
 		return err
 	}
@@ -237,10 +240,8 @@ func (m *Manager) bootstrapSession(name, path string, resume bool) error {
 		return err
 	}
 
-	claudeCmd := "claude"
-	if resume {
-		claudeCmd = fmt.Sprintf("claude --resume %s", name)
-	}
+	caps := m.claudeCapabilities(ctx)
+	claudeCmd := claude.BuildLaunchCommand(name, resume, caps)
 	if err := m.tmux.SendKeys(name+":0.0", []string{claudeCmd}, true); err != nil {
 		return err
 	}
@@ -268,7 +269,7 @@ func (m *Manager) OpenWorkspace(ctx context.Context, id string, resumeClaude boo
 	}
 
 	if !sessionExists {
-		if err := m.bootstrapSession(ws.TmuxSession, ws.WorktreePath, resumeClaude); err != nil {
+		if err := m.bootstrapSession(ctx, ws.TmuxSession, ws.WorktreePath, resumeClaude); err != nil {
 			return err
 		}
 	}
@@ -515,6 +516,26 @@ func (m *Manager) ResetConfig() (config.Config, error) {
 	}
 	m.cfg = cfg
 	return cfg, nil
+}
+
+func (m *Manager) claudeCapabilities(ctx context.Context) claude.Capabilities {
+	if m.capsDetected {
+		return m.claudeCaps
+	}
+
+	m.capsDetected = true
+	if m.skipDeps || os.Getenv("CCW_SKIP_DEPS") == "1" {
+		m.claudeCaps = claude.DefaultCapabilities()
+		return m.claudeCaps
+	}
+
+	caps, err := claude.DetectCapabilities(ctx)
+	if err != nil {
+		m.claudeCaps = claude.DefaultCapabilities()
+		return m.claudeCaps
+	}
+	m.claudeCaps = caps
+	return m.claudeCaps
 }
 
 func validateName(name string) error {
