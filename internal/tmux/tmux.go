@@ -15,7 +15,11 @@ import (
 )
 
 type Runner struct {
-	CCMode bool
+	// CCMode controls whether tmux commands executed in this process include -CC.
+	// PreferCC tracks the user's preference (from config) so we can honor it when
+	// spawning new macOS windows (even if CCMode is disabled in the current shell).
+	CCMode   bool
+	PreferCC bool
 }
 
 var (
@@ -24,6 +28,7 @@ var (
 )
 
 func NewRunner(ccMode bool) Runner {
+	preferCC := ccMode
 	// Disable -CC unless running in iTerm with a real TTY.
 	if ccMode {
 		if os.Getenv("TERM_PROGRAM") != "iTerm.app" {
@@ -33,7 +38,7 @@ func NewRunner(ccMode bool) Runner {
 			ccMode = false
 		}
 	}
-	return Runner{CCMode: ccMode}
+	return Runner{CCMode: ccMode, PreferCC: preferCC}
 }
 
 func (r Runner) cmdArgs(args []string) []string {
@@ -103,7 +108,7 @@ func (r Runner) KillSession(name string) error {
 
 func (r Runner) AttachSession(name string) error {
 	if runtime.GOOS == "darwin" {
-		if err := openNewMacTerminalWindow(name, r.CCMode); err == nil {
+		if err := openNewMacTerminalWindow(name, r.PreferCC); err == nil {
 			return nil
 		}
 		return fmt.Errorf("failed to open macOS terminal window for tmux session %s", name)
