@@ -76,6 +76,17 @@ func (r Runner) SessionExists(name string) (bool, error) {
 	return false, err
 }
 
+func (r Runner) HasAttachedClients(session string) (bool, error) {
+	out, err := r.run(context.Background(), "list-clients", "-t", session)
+	if err != nil {
+		if code, ok := exitCode(err); ok && code == 1 {
+			return false, nil
+		}
+		return false, err
+	}
+	return strings.TrimSpace(out) != "", nil
+}
+
 func (r Runner) CreateSession(name, path string, detached bool) error {
 	if exists, err := r.SessionExists(name); err != nil {
 		return err

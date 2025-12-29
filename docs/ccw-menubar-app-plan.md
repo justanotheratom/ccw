@@ -672,6 +672,7 @@ BUILD-1 ──> BUILD-2 ──> BUILD-3 ──> RELEASE-1
 **File:** `internal/tmux/tmux.go`
 **Depends on:** None
 **Description:** Add method to detect if a tmux session has attached clients.
+**Status:** Complete
 
 ```go
 // Add this method to Runner struct
