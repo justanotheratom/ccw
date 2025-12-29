@@ -970,6 +970,7 @@ func findITermApp() string {
 **Files:** `cmd/open.go`, `cmd/new.go`, `cmd/rm.go` (as needed)
 **Depends on:** None (parallel with CLI-1,2,3)
 **Description:** Ensure GUI-triggered commands never prompt for input (e.g., add/verify `open --no-resume`, `new --no-attach`, `rm --yes`).
+**Status:** Complete
 
 **Test:** Run each command with stdin closed (e.g., `</dev/null`) and confirm no prompts.
 
