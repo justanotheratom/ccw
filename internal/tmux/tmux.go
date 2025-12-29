@@ -205,6 +205,17 @@ func openNewMacTerminalWindow(session string, ccMode bool) error {
   end try
   activate
 end tell`, command, useCC)
+		if err := runOsaScript(script); err != nil {
+			// Fallback: simpler script without resize/minimize gymnastics.
+			fallback := fmt.Sprintf(`tell application "iTerm"
+  create window with default profile command "%s"
+  activate
+end tell`, command)
+			if err2 := runOsaScript(fallback); err2 != nil {
+				return fmt.Errorf("osascript iTerm: %v (fallback: %v)", err, err2)
+			}
+		}
+		return nil
 	} else {
 		script = fmt.Sprintf(`tell application "Terminal"
   do script "%s"
@@ -212,8 +223,7 @@ end tell`, command, useCC)
 end tell`, command)
 	}
 
-	cmd := exec.Command("osascript", "-e", script)
-	return cmd.Run()
+	return runOsaScript(script)
 }
 
 func pickMacTerminalApp() string {
@@ -256,4 +266,14 @@ func shellQuote(s string) string {
 		return s
 	}
 	return "'" + strings.ReplaceAll(s, `'`, `'\''`) + "'"
+}
+
+func runOsaScript(script string) error {
+	cmd := exec.Command("osascript", "-e", script)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%w (stderr: %s)", err, strings.TrimSpace(stderr.String()))
+	}
+	return nil
 }
