@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"golang.org/x/term"
 )
 
 type Runner struct {
@@ -20,6 +22,15 @@ var (
 )
 
 func NewRunner(ccMode bool) Runner {
+	// Disable -CC unless running in iTerm with a real TTY.
+	if ccMode {
+		if os.Getenv("TERM_PROGRAM") != "iTerm.app" {
+			ccMode = false
+		}
+		if !term.IsTerminal(int(os.Stdout.Fd())) {
+			ccMode = false
+		}
+	}
 	return Runner{CCMode: ccMode}
 }
 
