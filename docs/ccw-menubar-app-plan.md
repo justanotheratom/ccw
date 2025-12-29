@@ -827,6 +827,7 @@ if showJSON {
 **Files:** `cmd/repos.go` (new), `cmd/check.go` (new)
 **Depends on:** None (parallel with CLI-1,2,3)
 **Description:** Add repos listing and dependency check (including iTerm detection); `check --json` emits stable JSON for onboarding.
+**Status:** Complete
 
 **cmd/repos.go:**
 ```go
