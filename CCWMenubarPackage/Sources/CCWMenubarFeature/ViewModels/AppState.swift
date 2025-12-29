@@ -8,6 +8,7 @@ public final class AppState: ObservableObject {
     @Published public var error: Error?
     @Published public var workspaceInfo: WorkspaceInfo?
     @Published public var showingWorkspaceInfo = false
+    @Published public var config: CCWConfig?
     @Published public var setupState: SetupState = .checking
 
     public enum SetupState {
@@ -105,6 +106,34 @@ public final class AppState: ObservableObject {
         } catch {
             self.error = error
             return []
+        }
+    }
+
+    public func loadConfig() async {
+        guard let cli = cli else { return }
+        do {
+            config = try await cli.getConfig()
+        } catch {
+            self.error = error
+        }
+    }
+
+    public func setConfig(key: String, value: String) async {
+        guard let cli = cli else { return }
+        do {
+            try await cli.setConfig(key: key, value: value)
+        } catch {
+            self.error = error
+        }
+    }
+
+    public func checkDependencies() async -> [String: DepStatus] {
+        guard let cli = cli else { return [:] }
+        do {
+            return try await cli.checkDependencies()
+        } catch {
+            self.error = error
+            return [:]
         }
     }
 }

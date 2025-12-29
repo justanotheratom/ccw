@@ -3,6 +3,7 @@ import SwiftUI
 public struct MenuBarView: View {
     @EnvironmentObject private var appState: AppState
     @State private var showingNewWorkspace = false
+    @State private var showingOnboarding = false
 
     public init() {}
 
@@ -19,6 +20,10 @@ public struct MenuBarView: View {
         .frame(width: 350)
         .sheet(isPresented: $showingNewWorkspace) {
             NewWorkspaceView()
+                .environmentObject(appState)
+        }
+        .sheet(isPresented: $showingOnboarding) {
+            OnboardingView()
                 .environmentObject(appState)
         }
         .sheet(isPresented: $appState.showingWorkspaceInfo) {
@@ -45,11 +50,17 @@ public struct MenuBarView: View {
             ProgressView()
                 .padding()
         case .missingDependencies:
-            Text("Missing dependencies")
-                .padding()
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Missing dependencies")
+                Button("Open Setup") { showingOnboarding = true }
+            }
+            .padding()
         case .needsOnboarding:
-            Text("Complete setup in Settings")
-                .padding()
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Setup required")
+                Button("Open Setup") { showingOnboarding = true }
+            }
+            .padding()
         case .error(let message):
             Text(message)
                 .padding()

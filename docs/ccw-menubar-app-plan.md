@@ -1505,6 +1505,7 @@ struct NewWorkspaceView: View {
 #### APP-5: Implement Settings and Onboarding
 **Depends on:** APP-3
 **Description:** Settings window and first-run onboarding flow. Include iTerm in dependency checks and show Automation permission guidance if AppleScript fails.
+**Status:** Complete
 
 Create `Views/Windows/SettingsView.swift` and `Views/Windows/OnboardingView.swift` following the UI mockups in the plan.
 
