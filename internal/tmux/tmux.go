@@ -188,7 +188,10 @@ func openNewMacTerminalWindow(session string, ccMode bool) error {
 	var script string
 	if app == "iTerm" {
 		script = fmt.Sprintf(`tell application "iTerm"
-  create window with default profile command "%s"
+  set newWindow to (create window with default profile command "%s")
+  try
+    set zoomed of newWindow to true
+  end try
   activate
 end tell`, command)
 	} else {
