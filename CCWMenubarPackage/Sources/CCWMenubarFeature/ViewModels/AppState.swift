@@ -7,6 +7,7 @@ public final class AppState: ObservableObject {
     @Published public var isLoading = false
     @Published public var error: Error?
     @Published public var workspaceInfo: WorkspaceInfo?
+    @Published public var showingWorkspaceInfo = false
     @Published public var setupState: SetupState = .checking
 
     public enum SetupState {
@@ -91,8 +92,19 @@ public final class AppState: ObservableObject {
         guard let cli = cli else { return }
         do {
             workspaceInfo = try await cli.workspaceInfo(id)
+            showingWorkspaceInfo = true
         } catch {
             self.error = error
+        }
+    }
+
+    public func listRepos() async -> [String] {
+        guard let cli = cli else { return [] }
+        do {
+            return try await cli.listRepos()
+        } catch {
+            self.error = error
+            return []
         }
     }
 }

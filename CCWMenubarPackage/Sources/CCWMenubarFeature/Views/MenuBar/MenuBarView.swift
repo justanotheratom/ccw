@@ -2,6 +2,7 @@ import SwiftUI
 
 public struct MenuBarView: View {
     @EnvironmentObject private var appState: AppState
+    @State private var showingNewWorkspace = false
 
     public init() {}
 
@@ -16,6 +17,13 @@ public struct MenuBarView: View {
             footer
         }
         .frame(width: 350)
+        .sheet(isPresented: $showingNewWorkspace) {
+            NewWorkspaceView()
+                .environmentObject(appState)
+        }
+        .sheet(isPresented: $appState.showingWorkspaceInfo) {
+            WorkspaceInfoView(info: appState.workspaceInfo)
+        }
     }
 
     private var header: some View {
@@ -23,7 +31,7 @@ public struct MenuBarView: View {
             Text("CCW Workspaces")
                 .font(.headline)
             Spacer()
-            Button(action: {}) {
+            Button(action: { showingNewWorkspace = true }) {
                 Image(systemName: "plus")
             }
         }

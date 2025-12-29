@@ -3,6 +3,7 @@ import SwiftUI
 struct WorkspaceRow: View {
     let workspace: WorkspaceStatus
     @EnvironmentObject private var appState: AppState
+    @State private var confirmRemove = false
 
     var body: some View {
         Button(action: {
@@ -32,8 +33,16 @@ struct WorkspaceRow: View {
             }
             Divider()
             Button("Remove") {
+                confirmRemove = true
+            }
+        }
+        .alert("Remove workspace?", isPresented: $confirmRemove) {
+            Button("Remove", role: .destructive) {
                 Task { await appState.removeWorkspace(workspace.id, force: false) }
             }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will remove the worktree and session for \(workspace.id).")
         }
     }
 

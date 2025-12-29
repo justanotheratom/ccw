@@ -1443,6 +1443,7 @@ Add a context menu for each workspace row: Open, Open (no resume), Info, Remove.
 #### APP-4: Implement New Workspace and Remove workflows
 **Depends on:** APP-3
 **Description:** Add sheets for creating and removing workspaces; refresh the workspace list after create/remove and surface errors.
+**Status:** Complete
 
 Create `Views/Windows/NewWorkspaceView.swift`:
 ```swift
