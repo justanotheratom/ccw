@@ -54,6 +54,7 @@ ccw config repos_dir ~/projects
 ## Dependencies
 - Required: `git`, `tmux`
 - Recommended: `lazygit` (right pane)
+- Optional (macOS): iTerm2 if you want `iterm_cc_mode` (default) to use tmux `-CC` integration; otherwise ccw falls back to the system terminal.
 - Claude Code CLI: installed separately; `ccw new` launches it in the left pane.
 
 ## Completions
