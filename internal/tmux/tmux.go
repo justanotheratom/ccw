@@ -173,7 +173,8 @@ func normalizeTarget(target string) string {
 }
 
 func openNewMacTerminalWindow(session string) error {
-	command := tmuxAttachCommand(session)
+	tmuxBin := tmuxBinary()
+	command := tmuxAttachCommand(tmuxBin, session)
 
 	app := pickMacTerminalApp()
 
@@ -207,12 +208,29 @@ func pickMacTerminalApp() string {
 	return "Terminal"
 }
 
-func tmuxAttachCommand(session string) string {
-	base := fmt.Sprintf("tmux attach -t %s", session)
+func tmuxAttachCommand(tmuxBin, session string) string {
+	base := fmt.Sprintf("%s attach -t %s", shellQuote(tmuxBin), session)
 	tmuxEnv := os.Getenv("TMUX")
 	if tmuxEnv == "" {
 		return base
 	}
 	escaped := strings.ReplaceAll(tmuxEnv, `"`, `\"`)
 	return fmt.Sprintf("TMUX=\"%s\" %s", escaped, base)
+}
+
+func tmuxBinary() string {
+	if p, err := exec.LookPath("tmux"); err == nil {
+		return p
+	}
+	return "tmux"
+}
+
+func shellQuote(s string) string {
+	if s == "" {
+		return "''"
+	}
+	if !strings.ContainsAny(s, " '\"\\$") {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, `'`, `'\''`) + "'"
 }
