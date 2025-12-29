@@ -184,6 +184,7 @@ func openNewMacTerminalWindow(session string, ccMode bool) error {
 	app := pickMacTerminalApp()
 	useCC := ccMode && app == "iTerm"
 	command := tmuxAttachCommand(tmuxBin, session, useCC, tmuxEnv)
+	appleCmd := escapeAppleScript(command)
 
 	var script string
 	if app == "iTerm" {
@@ -204,13 +205,13 @@ func openNewMacTerminalWindow(session string, ccMode bool) error {
     end if
   end try
   activate
-end tell`, command, useCC)
+end tell`, appleCmd, useCC)
 		if err := runOsaScript(script); err != nil {
 			// Fallback: simpler script without resize/minimize gymnastics.
 			fallback := fmt.Sprintf(`tell application "iTerm"
   create window with default profile command "%s"
   activate
-end tell`, command)
+end tell`, appleCmd)
 			if err2 := runOsaScript(fallback); err2 != nil {
 				return fmt.Errorf("osascript iTerm: %v (fallback: %v)", err, err2)
 			}
@@ -220,7 +221,7 @@ end tell`, command)
 		script = fmt.Sprintf(`tell application "Terminal"
   do script "%s"
   activate
-end tell`, command)
+end tell`, appleCmd)
 	}
 
 	return runOsaScript(script)
@@ -276,4 +277,10 @@ func runOsaScript(script string) error {
 		return fmt.Errorf("%w (stderr: %s)", err, strings.TrimSpace(stderr.String()))
 	}
 	return nil
+}
+
+func escapeAppleScript(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\\"`)
+	return s
 }
