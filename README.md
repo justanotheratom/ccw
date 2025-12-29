@@ -1,6 +1,6 @@
 # CCW (Claude Code Workspace)
 
-CCW is a CLI for creating and managing Claude Code development workspaces using git worktrees and tmux sessions.
+CCW is a fast CLI that spins up Claude Code workspaces using git worktrees and tmux. It gives you a repeatable two-pane layout (Claude Code on the left, lazygit on the right), automatic worktree/branch wiring, and one-command attach/resume so you can hop between features without manual setup.
 
 ## Features
 - `ccw new <repo> <branch>`: create a worktree, tmux session, and launch Claude/lazygit.
@@ -12,25 +12,14 @@ CCW is a CLI for creating and managing Claude Code development workspaces using 
 - `ccw config`: view or set configuration values.
 - `ccw completion <shell>`: generate bash/zsh/fish completions.
 
-Workspaces are stored under `~/.ccw` by default (`CCW_HOME` overrides). Repositories are resolved from `repos_dir` in config (default `~/github`).
+Workspaces live under `~/.ccw` by default (`CCW_HOME` overrides). Repos are resolved from `repos_dir` in config (default `~/github`).
 
-## Installation
+## Install
 
 ### Homebrew (macOS/Linux)
-Two options:
-
-1) Use the tap from GitHub (recommended once published):
 ```bash
 brew tap justanotheratom/ccw
 brew install ccw
-```
-
-2) Install from the local formula in this repo (no public tap needed):
-```bash
-# From the repo root (after cloning)
-cp packaging/homebrew/ccw.rb /opt/homebrew/Library/Taps/justanotheratom/homebrew-ccw/Formula/ccw.rb \
-  || brew tap-new justanotheratom/ccw && cp packaging/homebrew/ccw.rb /opt/homebrew/Library/Taps/justanotheratom/homebrew-ccw/Formula/ccw.rb
-brew install justanotheratom/ccw/ccw
 ```
 
 ### Manual download (examples)
@@ -52,7 +41,7 @@ make build
 sudo cp bin/ccw /usr/local/bin/
 ```
 
-## Usage
+## Usage (common flow)
 ```bash
 ccw new myrepo feature/cool-thing
 ccw open myrepo/feature/cool-thing
@@ -62,6 +51,11 @@ ccw stale --rm --force
 ccw config repos_dir ~/projects
 ```
 
+## Dependencies
+- Required: `git`, `tmux`
+- Recommended: `lazygit` (right pane)
+- Claude Code CLI: installed separately; `ccw new` launches it in the left pane.
+
 ## Completions
 ```bash
 ccw completion bash > /usr/local/etc/bash_completion.d/ccw
@@ -70,12 +64,12 @@ ccw completion fish > ~/.config/fish/completions/ccw.fish
 ```
 
 ## Homebrew
-An example formula is provided at `packaging/homebrew/ccw.rb`. Update the tarball URL and SHA before publishing a tap.
+The tap formula lives at `packaging/homebrew/ccw.rb` and is published to `justanotheratom/homebrew-ccw`. Update URLs/SHAs on each release.
 
 ## Release
 - Tag a version (`vX.Y.Z`) to trigger the release workflow.
 - Artifacts for macOS/Linux amd64 are built and uploaded from CI (`.github/workflows/release.yml`).
-- Update the Homebrew formula to point at the new tag.
+- Update the Homebrew formula to point at the new tag and push the tap.
 
 ## Testing
 Tests rely on `git` and `tmux`. CI installs tmux; local runs may skip dependency checks by setting `CCW_SKIP_DEPS=1` when needed. Use `make test` to run the suite.
