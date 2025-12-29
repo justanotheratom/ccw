@@ -191,9 +191,12 @@ func openNewMacTerminalWindow(session string, ccMode bool) error {
   set newWindow to (create window with default profile command "%s")
   try
     set zoomed of newWindow to true
+    if %t then
+      set miniaturized of newWindow to true
+    end if
   end try
   activate
-end tell`, command)
+end tell`, command, useCC)
 	} else {
 		script = fmt.Sprintf(`tell application "Terminal"
   do script "%s"
