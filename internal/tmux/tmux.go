@@ -101,17 +101,14 @@ func (r Runner) KillSession(name string) error {
 }
 
 func (r Runner) AttachSession(name string) error {
-	if os.Getenv("TMUX") != "" && runtime.GOOS == "darwin" {
-		if err := openNewMacTerminalWindow(name); err == nil {
-			return nil
-		}
-	}
-
 	if os.Getenv("TMUX") != "" {
-		if _, err := r.run(context.Background(), "switch-client", "-t", name); err == nil {
-			return nil
+		if runtime.GOOS == "darwin" {
+			if err := openNewMacTerminalWindow(name); err == nil {
+				return nil
+			}
+			return fmt.Errorf("inside tmux; failed to open new macOS terminal window")
 		}
-		// Fall back to attach if switch-client fails.
+		return fmt.Errorf("inside tmux; run ccw open from a non-tmux shell")
 	}
 	_, err := r.run(context.Background(), "attach", "-t", name)
 	return err
