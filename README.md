@@ -17,9 +17,20 @@ Workspaces are stored under `~/.ccw` by default (`CCW_HOME` overrides). Reposito
 ## Installation
 
 ### Homebrew (macOS/Linux)
+Two options:
+
+1) Use the tap from GitHub (recommended once published):
 ```bash
-brew tap justanotheratom/ccw   # when published
+brew tap justanotheratom/ccw
 brew install ccw
+```
+
+2) Install from the local formula in this repo (no public tap needed):
+```bash
+# From the repo root (after cloning)
+cp packaging/homebrew/ccw.rb /opt/homebrew/Library/Taps/justanotheratom/homebrew-ccw/Formula/ccw.rb \
+  || brew tap-new justanotheratom/ccw && cp packaging/homebrew/ccw.rb /opt/homebrew/Library/Taps/justanotheratom/homebrew-ccw/Formula/ccw.rb
+brew install justanotheratom/ccw/ccw
 ```
 
 ### Manual download (examples)
