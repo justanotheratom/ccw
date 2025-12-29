@@ -103,7 +103,7 @@ func (r Runner) KillSession(name string) error {
 
 func (r Runner) AttachSession(name string) error {
 	if runtime.GOOS == "darwin" {
-		if err := openNewMacTerminalWindow(name); err == nil {
+		if err := openNewMacTerminalWindow(name, r.CCMode); err == nil {
 			return nil
 		}
 		return fmt.Errorf("failed to open macOS terminal window for tmux session %s", name)
@@ -172,11 +172,13 @@ func normalizeTarget(target string) string {
 	return target + ":"
 }
 
-func openNewMacTerminalWindow(session string) error {
+func openNewMacTerminalWindow(session string, ccMode bool) error {
 	tmuxBin := tmuxBinary()
-	command := tmuxAttachCommand(tmuxBin, session)
+	tmuxEnv := os.Getenv("TMUX")
 
 	app := pickMacTerminalApp()
+	useCC := ccMode && app == "iTerm"
+	command := tmuxAttachCommand(tmuxBin, session, useCC, tmuxEnv)
 
 	var script string
 	if app == "iTerm" {
@@ -208,9 +210,11 @@ func pickMacTerminalApp() string {
 	return "Terminal"
 }
 
-func tmuxAttachCommand(tmuxBin, session string) string {
+func tmuxAttachCommand(tmuxBin, session string, ccMode bool, tmuxEnv string) string {
 	base := fmt.Sprintf("%s attach -t %s", shellQuote(tmuxBin), session)
-	tmuxEnv := os.Getenv("TMUX")
+	if ccMode {
+		base = fmt.Sprintf("%s -CC attach -t %s", shellQuote(tmuxBin), session)
+	}
 	if tmuxEnv == "" {
 		return base
 	}
