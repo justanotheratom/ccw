@@ -1,14 +1,16 @@
 name: Update Homebrew Tap
 
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
 
 permissions:
   contents: read
 
 jobs:
   bump-tap:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -19,7 +21,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          TAG=${GITHUB_REF##*/}
+          TAG=${{ github.event.workflow_run.head_branch }}
           gh release download "$TAG" --repo justanotheratom/ccw --dir dist
 
       - name: Update tap formula
@@ -27,7 +29,7 @@ jobs:
           TAP_PAT: ${{ secrets.TAP_PAT }}
         run: |
           set -euo pipefail
-          TAG=${GITHUB_REF##*/}
+          TAG=${{ github.event.workflow_run.head_branch }}
           if [ -z "${TAP_PAT:-}" ]; then
             echo "TAP_PAT secret is required to push updates to the tap repository" >&2
             exit 1
