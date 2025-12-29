@@ -1108,6 +1108,7 @@ struct CCWConfig: Codable {
 #### APP-2: Implement CLIBridge
 **Depends on:** APP-1, CLI-5, CLI-6
 **Description:** Create actor to execute ccw commands and parse output.
+**Status:** Complete
 
 Create `Core/CLI/CLIBridge.swift`:
 ```swift
