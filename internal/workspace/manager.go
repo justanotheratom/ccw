@@ -21,6 +21,7 @@ import (
 
 type TmuxRunner interface {
 	SessionExists(name string) (bool, error)
+	HasAttachedClients(session string) (bool, error)
 	CreateSession(name, path string, detached bool) error
 	KillSession(name string) error
 	AttachSession(name string) error
@@ -58,6 +59,7 @@ type WorkspaceStatus struct {
 	ID           string
 	Workspace    Workspace
 	SessionAlive bool
+	HasClients   bool
 }
 
 func NewManager(root string, tmuxRunner TmuxRunner) (*Manager, error) {
@@ -315,10 +317,15 @@ func (m *Manager) ListWorkspaces(ctx context.Context) ([]WorkspaceStatus, error)
 		if err != nil {
 			alive = false
 		}
+		hasClients := false
+		if alive {
+			hasClients, _ = m.tmux.HasAttachedClients(ws.TmuxSession)
+		}
 		statuses = append(statuses, WorkspaceStatus{
 			ID:           id,
 			Workspace:    ws,
 			SessionAlive: alive,
+			HasClients:   hasClients,
 		})
 	}
 
@@ -437,11 +444,16 @@ func (m *Manager) WorkspaceInfo(ctx context.Context, query string) (WorkspaceSta
 	if err != nil {
 		alive = false
 	}
+	hasClients := false
+	if alive {
+		hasClients, _ = m.tmux.HasAttachedClients(ws.TmuxSession)
+	}
 
 	return WorkspaceStatus{
 		ID:           id,
 		Workspace:    ws,
 		SessionAlive: alive,
+		HasClients:   hasClients,
 	}, nil
 }
 
@@ -469,10 +481,15 @@ func (m *Manager) StaleWorkspaces(ctx context.Context, force bool) ([]WorkspaceS
 			if err != nil {
 				alive = false
 			}
+			hasClients := false
+			if alive {
+				hasClients, _ = m.tmux.HasAttachedClients(ws.TmuxSession)
+			}
 			results = append(results, WorkspaceStatus{
 				ID:           id,
 				Workspace:    ws,
 				SessionAlive: alive,
+				HasClients:   hasClients,
 			})
 		}
 	}

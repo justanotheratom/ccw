@@ -693,6 +693,7 @@ func (r Runner) HasAttachedClients(session string) (bool, error) {
 **File:** `internal/workspace/manager.go`
 **Depends on:** CLI-1
 **Description:** Extend WorkspaceStatus struct and populate HasClients in ListWorkspaces.
+**Status:** Complete
 
 1. Add field to struct:
 ```go
