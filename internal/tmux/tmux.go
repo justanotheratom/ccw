@@ -110,8 +110,9 @@ func (r Runner) AttachSession(name string) error {
 	if runtime.GOOS == "darwin" {
 		if err := openNewMacTerminalWindow(name, r.PreferCC); err == nil {
 			return nil
+		} else {
+			return fmt.Errorf("failed to open macOS terminal window for tmux session %s: %w", name, err)
 		}
-		return fmt.Errorf("failed to open macOS terminal window for tmux session %s", name)
 	}
 
 	if os.Getenv("TMUX") != "" {
@@ -179,11 +180,9 @@ func normalizeTarget(target string) string {
 
 func openNewMacTerminalWindow(session string, ccMode bool) error {
 	tmuxBin := tmuxBinary()
-	tmuxEnv := os.Getenv("TMUX")
-
 	app := pickMacTerminalApp()
 	useCC := ccMode && app == "iTerm"
-	command := tmuxAttachCommand(tmuxBin, session, useCC, tmuxEnv)
+	command := tmuxAttachCommand(tmuxBin, session, useCC)
 	appleCmd := escapeAppleScript(command)
 
 	var script string
@@ -240,16 +239,12 @@ func pickMacTerminalApp() string {
 	return "Terminal"
 }
 
-func tmuxAttachCommand(tmuxBin, session string, ccMode bool, tmuxEnv string) string {
+func tmuxAttachCommand(tmuxBin, session string, ccMode bool) string {
 	base := fmt.Sprintf("%s attach -t %s", shellQuote(tmuxBin), session)
 	if ccMode {
 		base = fmt.Sprintf("%s -CC attach -t %s", shellQuote(tmuxBin), session)
 	}
-	if tmuxEnv == "" {
-		return base
-	}
-	escaped := strings.ReplaceAll(tmuxEnv, `"`, `\"`)
-	return fmt.Sprintf("TMUX=\"%s\" %s", escaped, base)
+	return base
 }
 
 func tmuxBinary() string {
