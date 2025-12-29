@@ -102,15 +102,17 @@ func (r Runner) KillSession(name string) error {
 }
 
 func (r Runner) AttachSession(name string) error {
-	if os.Getenv("TMUX") != "" {
-		if runtime.GOOS == "darwin" {
-			if err := openNewMacTerminalWindow(name); err == nil {
-				return nil
-			}
-			return fmt.Errorf("inside tmux; failed to open new macOS terminal window")
+	if runtime.GOOS == "darwin" {
+		if err := openNewMacTerminalWindow(name); err == nil {
+			return nil
 		}
+		return fmt.Errorf("failed to open macOS terminal window for tmux session %s", name)
+	}
+
+	if os.Getenv("TMUX") != "" {
 		return fmt.Errorf("inside tmux; run ccw open from a non-tmux shell")
 	}
+
 	_, err := r.run(context.Background(), "attach", "-t", name)
 	return err
 }
