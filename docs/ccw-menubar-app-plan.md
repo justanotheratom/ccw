@@ -1237,6 +1237,7 @@ struct DepStatus: Codable {
 #### APP-3: Create AppState and basic MenuBarView
 **Depends on:** APP-2
 **Description:** Set up centralized state and menubar UI. Use a menu-open hook (`MenuBarExtra(isPresented:)` or an `NSMenuDelegate`) so refresh triggers every time the menu is opened (not just first `onAppear`). Update the status item icon based on the highest-priority workspace state.
+**Status:** Complete
 
 Create `ViewModels/AppState.swift`:
 ```swift
