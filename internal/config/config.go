@@ -16,7 +16,6 @@ const (
 	dirName         = ".ccw"
 	configFileName  = "config.json"
 	defaultReposDir = "~/github"
-	defaultBase     = "main"
 )
 
 var ErrUnsupportedVersion = errors.New("unsupported config version")
@@ -27,12 +26,13 @@ type Layout struct {
 }
 
 type Config struct {
-	Version           int    `json:"version"`
-	ReposDir          string `json:"repos_dir"`
-	DefaultBase       string `json:"default_base"`
-	ITermCCMode       bool   `json:"iterm_cc_mode"`
-	ClaudeRenameDelay int    `json:"claude_rename_delay"`
-	Layout            Layout `json:"layout"`
+	Version                    int    `json:"version"`
+	ReposDir                   string `json:"repos_dir"`
+	ITermCCMode                bool   `json:"iterm_cc_mode"`
+	ClaudeRenameDelay          int    `json:"claude_rename_delay"`
+	Layout                     Layout `json:"layout"`
+	Onboarded                  bool   `json:"onboarded"`
+	ClaudeDangerouslySkipPerms bool   `json:"claude_dangerously_skip_permissions"`
 }
 
 type Store struct {
@@ -58,15 +58,13 @@ func NewStore(root string) (*Store, error) {
 
 func Default() Config {
 	return Config{
-		Version:           CurrentVersion,
-		ReposDir:          defaultReposDir,
-		DefaultBase:       defaultBase,
-		ITermCCMode:       true,
-		ClaudeRenameDelay: 5,
-		Layout: Layout{
-			Left:  "claude",
-			Right: "lazygit",
-		},
+		Version:                    CurrentVersion,
+		ReposDir:                   defaultReposDir,
+		ITermCCMode:                true,
+		ClaudeRenameDelay:          5,
+		Layout:                     Layout{Left: "claude", Right: "lazygit"},
+		Onboarded:                  false,
+		ClaudeDangerouslySkipPerms: false,
 	}
 }
 

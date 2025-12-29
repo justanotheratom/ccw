@@ -267,12 +267,20 @@ func TestSetConfigValue(t *testing.T) {
 	tmuxStub := newStubTmux()
 	mgr := newManagerForTest(t, reposRoot, tmuxStub)
 
-	cfg, err := mgr.SetConfigValue("default_base", "develop")
+	cfg, err := mgr.SetConfigValue("layout.right", "custom")
 	if err != nil {
 		t.Fatalf("SetConfigValue: %v", err)
 	}
-	if cfg.DefaultBase != "develop" {
-		t.Fatalf("expected default_base to change")
+	if cfg.Layout.Right != "custom" {
+		t.Fatalf("expected layout.right to change")
+	}
+
+	cfg, err = mgr.SetConfigValue("claude_dangerously_skip_permissions", "true")
+	if err != nil {
+		t.Fatalf("SetConfigValue: %v", err)
+	}
+	if !cfg.ClaudeDangerouslySkipPerms {
+		t.Fatalf("expected claude_dangerously_skip_permissions to be true")
 	}
 }
 

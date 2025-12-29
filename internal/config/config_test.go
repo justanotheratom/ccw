@@ -41,15 +41,13 @@ func TestConfigLoadExisting(t *testing.T) {
 	}
 
 	want := Config{
-		Version:           CurrentVersion,
-		ReposDir:          "~/projects",
-		DefaultBase:       "develop",
-		ITermCCMode:       false,
-		ClaudeRenameDelay: 3,
-		Layout: Layout{
-			Left:  "claude",
-			Right: "custom",
-		},
+		Version:                    CurrentVersion,
+		ReposDir:                   "~/projects",
+		ITermCCMode:                false,
+		ClaudeRenameDelay:          3,
+		Layout:                     Layout{Left: "claude", Right: "custom"},
+		Onboarded:                  true,
+		ClaudeDangerouslySkipPerms: true,
 	}
 
 	data, err := json.MarshalIndent(want, "", "  ")
@@ -66,7 +64,7 @@ func TestConfigLoadExisting(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if got.DefaultBase != want.DefaultBase || got.ReposDir != want.ReposDir || got.ITermCCMode != want.ITermCCMode {
+	if got.ReposDir != want.ReposDir || got.ITermCCMode != want.ITermCCMode || got.Onboarded != want.Onboarded {
 		t.Fatalf("loaded config mismatch: %+v", got)
 	}
 }
@@ -139,7 +137,7 @@ func TestConfigSaveCreatesBackup(t *testing.T) {
 		t.Fatalf("initial Save: %v", err)
 	}
 
-	cfg.DefaultBase = "develop"
+	cfg.Layout.Right = "custom"
 	if err := store.Save(cfg); err != nil {
 		t.Fatalf("second Save: %v", err)
 	}

@@ -40,9 +40,43 @@ func RemoteBranchExists(repoPath, remote, branch string) (bool, error) {
 	return strings.TrimSpace(out) != "", nil
 }
 
+// branchOrRemoteExists checks if a branch exists locally or on origin.
+func branchOrRemoteExists(repoPath, branch string) bool {
+	if exists, _ := BranchExists(repoPath, branch); exists {
+		return true
+	}
+	// Check remote
+	if _, err := runGit(context.Background(), repoPath, "rev-parse", "--verify", "--quiet", "origin/"+branch); err == nil {
+		return true
+	}
+	return false
+}
+
+// DetectDefaultBranch auto-detects the default branch (main or master) for a repo.
+// Returns an error if both exist or neither exists.
+func DetectDefaultBranch(repoPath string) (string, error) {
+	mainExists := branchOrRemoteExists(repoPath, "main")
+	masterExists := branchOrRemoteExists(repoPath, "master")
+
+	if mainExists && masterExists {
+		return "", errors.New("both 'main' and 'master' branches exist; specify --base explicitly")
+	}
+	if mainExists {
+		return "main", nil
+	}
+	if masterExists {
+		return "master", nil
+	}
+	return "", errors.New("neither 'main' nor 'master' branch found; specify --base explicitly")
+}
+
 func resolveBaseRef(repoPath, baseBranch string) (string, error) {
 	if baseBranch == "" {
-		baseBranch = "main"
+		detected, err := DetectDefaultBranch(repoPath)
+		if err != nil {
+			return "", err
+		}
+		baseBranch = detected
 	}
 
 	// Prefer remote base branch.

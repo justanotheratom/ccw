@@ -60,9 +60,12 @@ func init() {
 func printConfig(cmd *cobra.Command, cfg config.Config) {
 	builder := []string{
 		fmt.Sprintf("repos_dir=%s", cfg.ReposDir),
-		fmt.Sprintf("default_base=%s", cfg.DefaultBase),
 		fmt.Sprintf("iterm_cc_mode=%t", cfg.ITermCCMode),
 		fmt.Sprintf("claude_rename_delay=%d", cfg.ClaudeRenameDelay),
+		fmt.Sprintf("layout.left=%s", cfg.Layout.Left),
+		fmt.Sprintf("layout.right=%s", cfg.Layout.Right),
+		fmt.Sprintf("claude_dangerously_skip_permissions=%t", cfg.ClaudeDangerouslySkipPerms),
+		fmt.Sprintf("onboarded=%t", cfg.Onboarded),
 	}
 	fmt.Fprintln(cmd.OutOrStdout(), strings.Join(builder, "\n"))
 }
@@ -71,12 +74,18 @@ func configValue(cfg config.Config, key string) (string, error) {
 	switch key {
 	case "repos_dir":
 		return cfg.ReposDir, nil
-	case "default_base":
-		return cfg.DefaultBase, nil
 	case "iterm_cc_mode":
 		return fmt.Sprintf("%t", cfg.ITermCCMode), nil
 	case "claude_rename_delay":
 		return fmt.Sprintf("%d", cfg.ClaudeRenameDelay), nil
+	case "layout.left":
+		return cfg.Layout.Left, nil
+	case "layout.right":
+		return cfg.Layout.Right, nil
+	case "claude_dangerously_skip_permissions":
+		return fmt.Sprintf("%t", cfg.ClaudeDangerouslySkipPerms), nil
+	case "onboarded":
+		return fmt.Sprintf("%t", cfg.Onboarded), nil
 	default:
 		return "", fmt.Errorf("unknown config key: %s", key)
 	}

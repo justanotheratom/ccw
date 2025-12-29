@@ -50,14 +50,22 @@ func parseHelp(helpText string) Capabilities {
 	return caps
 }
 
-func BuildLaunchCommand(name string, resume bool, caps Capabilities) string {
+func BuildLaunchCommand(name string, resume bool, caps Capabilities, skipPerms bool) string {
+	var parts []string
+	parts = append(parts, "claude")
+
+	if skipPerms {
+		parts = append(parts, "--dangerously-skip-permissions")
+	}
+
 	if resume && caps.SupportsResume {
-		return "claude --resume " + name
+		parts = append(parts, "--resume", name)
+		return strings.Join(parts, " ")
 	}
 
 	if caps.SessionNameFlag != "" {
-		return "claude " + caps.SessionNameFlag + " " + name
+		parts = append(parts, caps.SessionNameFlag, name)
 	}
 
-	return "claude"
+	return strings.Join(parts, " ")
 }

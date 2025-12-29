@@ -22,14 +22,29 @@ Usage of claude:
 
 func TestBuildLaunchCommand(t *testing.T) {
 	caps := Capabilities{SupportsResume: true, SessionNameFlag: "--session-name"}
-	cmd := BuildLaunchCommand("demo", true, caps)
+
+	// Test resume without skip perms
+	cmd := BuildLaunchCommand("demo", true, caps, false)
 	if cmd != "claude --resume demo" {
 		t.Fatalf("unexpected command: %s", cmd)
 	}
 
-	cmd = BuildLaunchCommand("demo", false, caps)
+	// Test non-resume without skip perms
+	cmd = BuildLaunchCommand("demo", false, caps, false)
 	if cmd != "claude --session-name demo" {
 		t.Fatalf("unexpected command: %s", cmd)
+	}
+
+	// Test resume with skip perms
+	cmd = BuildLaunchCommand("demo", true, caps, true)
+	if cmd != "claude --dangerously-skip-permissions --resume demo" {
+		t.Fatalf("unexpected command with skip perms: %s", cmd)
+	}
+
+	// Test non-resume with skip perms
+	cmd = BuildLaunchCommand("demo", false, caps, true)
+	if cmd != "claude --dangerously-skip-permissions --session-name demo" {
+		t.Fatalf("unexpected command with skip perms: %s", cmd)
 	}
 }
 

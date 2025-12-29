@@ -212,3 +212,67 @@ func TestRemoveWorktreeMissingIsOk(t *testing.T) {
 		t.Fatalf("expected no error for missing worktree, got %v", err)
 	}
 }
+
+func TestDetectDefaultBranchMain(t *testing.T) {
+	repo := initRepo(t) // initRepo creates a repo with main branch
+	branch, err := DetectDefaultBranch(repo)
+	if err != nil {
+		t.Fatalf("DetectDefaultBranch: %v", err)
+	}
+	if branch != "main" {
+		t.Fatalf("expected main, got %s", branch)
+	}
+}
+
+func TestDetectDefaultBranchMaster(t *testing.T) {
+	dir := t.TempDir()
+
+	if _, err := runGit(context.Background(), dir, "init"); err != nil {
+		t.Fatalf("git init: %v", err)
+	}
+	if _, err := runGit(context.Background(), dir, "checkout", "-b", "master"); err != nil {
+		t.Fatalf("git checkout: %v", err)
+	}
+	if _, err := runGit(context.Background(), dir, "config", "user.email", "test@example.com"); err != nil {
+		t.Fatalf("git config: %v", err)
+	}
+	if _, err := runGit(context.Background(), dir, "config", "user.name", "Test User"); err != nil {
+		t.Fatalf("git config: %v", err)
+	}
+	if _, err := runGit(context.Background(), dir, "commit", "--allow-empty", "-m", "initial"); err != nil {
+		t.Fatalf("git commit: %v", err)
+	}
+
+	branch, err := DetectDefaultBranch(dir)
+	if err != nil {
+		t.Fatalf("DetectDefaultBranch: %v", err)
+	}
+	if branch != "master" {
+		t.Fatalf("expected master, got %s", branch)
+	}
+}
+
+func TestDetectDefaultBranchNeitherError(t *testing.T) {
+	dir := t.TempDir()
+
+	if _, err := runGit(context.Background(), dir, "init"); err != nil {
+		t.Fatalf("git init: %v", err)
+	}
+	if _, err := runGit(context.Background(), dir, "checkout", "-b", "develop"); err != nil {
+		t.Fatalf("git checkout: %v", err)
+	}
+	if _, err := runGit(context.Background(), dir, "config", "user.email", "test@example.com"); err != nil {
+		t.Fatalf("git config: %v", err)
+	}
+	if _, err := runGit(context.Background(), dir, "config", "user.name", "Test User"); err != nil {
+		t.Fatalf("git config: %v", err)
+	}
+	if _, err := runGit(context.Background(), dir, "commit", "--allow-empty", "-m", "initial"); err != nil {
+		t.Fatalf("git commit: %v", err)
+	}
+
+	_, err := DetectDefaultBranch(dir)
+	if err == nil {
+		t.Fatal("expected error when neither main nor master exists")
+	}
+}

@@ -172,9 +172,7 @@ func (m *Manager) CreateWorkspace(ctx context.Context, repo, branch string, opts
 	}
 
 	baseBranch := opts.BaseBranch
-	if baseBranch == "" {
-		baseBranch = m.cfg.DefaultBase
-	}
+	// If baseBranch is empty, git.CreateBranch will auto-detect main/master
 
 	worktreeRoot := filepath.Join(m.root, "worktrees")
 	workspaceID := WorkspaceID(repo, branch)
@@ -242,7 +240,7 @@ func (m *Manager) bootstrapSession(ctx context.Context, name, path string, resum
 	}
 
 	caps := m.claudeCapabilities(ctx)
-	claudeCmd := claude.BuildLaunchCommand(name, resume, caps)
+	claudeCmd := claude.BuildLaunchCommand(name, resume, caps, m.cfg.ClaudeDangerouslySkipPerms)
 	if err := m.tmux.SendKeys(name+":0.0", []string{claudeCmd}, true); err != nil {
 		return err
 	}
@@ -492,8 +490,6 @@ func (m *Manager) SetConfigValue(key, value string) (config.Config, error) {
 	switch key {
 	case "repos_dir":
 		cfg.ReposDir = value
-	case "default_base":
-		cfg.DefaultBase = value
 	case "iterm_cc_mode":
 		cfg.ITermCCMode = strings.ToLower(value) == "true"
 	case "claude_rename_delay":
@@ -502,6 +498,14 @@ func (m *Manager) SetConfigValue(key, value string) (config.Config, error) {
 			return cfg, fmt.Errorf("invalid claude_rename_delay: %w", err)
 		}
 		cfg.ClaudeRenameDelay = delay
+	case "layout.left":
+		cfg.Layout.Left = value
+	case "layout.right":
+		cfg.Layout.Right = value
+	case "claude_dangerously_skip_permissions":
+		cfg.ClaudeDangerouslySkipPerms = strings.ToLower(value) == "true"
+	case "onboarded":
+		cfg.Onboarded = strings.ToLower(value) == "true"
 	default:
 		return cfg, fmt.Errorf("unknown config key: %s", key)
 	}
