@@ -980,6 +980,7 @@ func findITermApp() string {
 **Files:** `internal/tmux/tmux.go` (and any iTerm helpers)
 **Depends on:** CLI-3
 **Description:** Ensure the focused iTerm window can be uniquely identified (e.g., set window/title to include tmux session name or query iTerm sessions instead of window titles).
+**Status:** Complete
 
 **Test:** Open a workspace twice and confirm the existing iTerm window is focused every time.
 

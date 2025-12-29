@@ -217,6 +217,7 @@ func openNewMacTerminalWindow(session string, ccMode bool) error {
 	if app == "iTerm" {
 		script = fmt.Sprintf(`tell application "iTerm"
   set controlWindow to (create window with default profile command "%s")
+  set name of controlWindow to "%s"
   try
     tell application "Finder" to set screenBounds to bounds of window of desktop
     if %t then
@@ -232,13 +233,14 @@ func openNewMacTerminalWindow(session string, ccMode bool) error {
     end if
   end try
   activate
-end tell`, appleCmd, useCC)
+end tell`, appleCmd, escapeAppleScript(session), useCC)
 		if err := runOsaScript(script); err != nil {
 			// Fallback: simpler script without resize/minimize gymnastics.
 			fallback := fmt.Sprintf(`tell application "iTerm"
   create window with default profile command "%s"
+  set name of current window to "%s"
   activate
-end tell`, appleCmd)
+end tell`, appleCmd, escapeAppleScript(session))
 			if err2 := runOsaScript(fallback); err2 != nil {
 				return fmt.Errorf("osascript iTerm: %v (fallback: %v)", err, err2)
 			}
