@@ -70,9 +70,7 @@ The tap formula lives at `packaging/homebrew/ccw.rb` and is published to `justan
 - Bump `cmd/root.go` version, then `go test ./...`.
 - Tag and push (example): `git commit -am "Release vX.Y.Z" && git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin HEAD:master --tags`
 - Wait for the GitHub Actions release to finish (builds macOS/Linux amd64/arm64 and uploads assets).
-- Download assets to calculate shas: `gh release download vX.Y.Z --repo justanotheratom/ccw && shasum -a 256 ccw-*`
-- Update `packaging/homebrew/ccw.rb` with the new version, URLs, and shas (macOS arm64/amd64, Linux arm64/amd64); commit and push.
-- Update the tap repo `justanotheratom/homebrew-ccw` `Formula/ccw.rb` with the same version/URLs/shas; commit and push.
+- Tap automation: on `release` published, `.github/workflows/update-tap.yml` downloads assets, computes shas, rewrites the tap formula, and pushes to `justanotheratom/homebrew-ccw`. Requires `TAP_PAT` secret with `repo` access to that tap.
 - Verify: `brew update && brew reinstall ccw && ccw version` (should print the new version).
 
 ## Testing
