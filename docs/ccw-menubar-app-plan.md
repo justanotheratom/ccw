@@ -766,6 +766,7 @@ func (r Runner) AttachSession(name string) error {
 **Files:** `cmd/stale.go`, `cmd/info.go`
 **Depends on:** None (parallel with CLI-1,2,3)
 **Description:** Add JSON output option to existing commands.
+**Status:** Complete
 
 For `cmd/stale.go`:
 ```go

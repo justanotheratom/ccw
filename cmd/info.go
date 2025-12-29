@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"text/tabwriter"
 	"time"
@@ -25,6 +26,13 @@ var infoCmd = &cobra.Command{
 			return err
 		}
 
+		showJSON, _ := cmd.Flags().GetBool("json")
+		if showJSON {
+			enc := json.NewEncoder(cmd.OutOrStdout())
+			enc.SetIndent("", "  ")
+			return enc.Encode(status)
+		}
+
 		w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 		fmt.Fprintf(w, "Workspace:\t%s\n", status.ID)
 		fmt.Fprintf(w, "Repo:\t%s\n", status.Workspace.RepoPath)
@@ -44,4 +52,5 @@ var infoCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(infoCmd)
+	infoCmd.Flags().Bool("json", false, "Output as JSON")
 }
