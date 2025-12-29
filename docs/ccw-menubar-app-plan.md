@@ -1008,6 +1008,7 @@ Checklist:
 #### APP-1: Create Xcode project and data models
 **Depends on:** APP-0, CLI-2, CLI-4, CLI-5 (final JSON schema for ls/stale/info/check)
 **Description:** Set up Swift project with Codable models matching CLI output (ls, stale, info, config, check).
+**Status:** Complete
 
 1. Create new Xcode project:
    - File > New > Project > macOS > App
