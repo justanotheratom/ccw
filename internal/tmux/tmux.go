@@ -100,6 +100,12 @@ func (r Runner) KillSession(name string) error {
 }
 
 func (r Runner) AttachSession(name string) error {
+	if os.Getenv("TMUX") != "" {
+		if _, err := r.run(context.Background(), "switch-client", "-t", name); err == nil {
+			return nil
+		}
+		// Fall back to attach if switch-client fails.
+	}
 	_, err := r.run(context.Background(), "attach", "-t", name)
 	return err
 }
