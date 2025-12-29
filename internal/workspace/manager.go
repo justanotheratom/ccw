@@ -16,6 +16,7 @@ import (
 	"github.com/ccw/ccw/internal/deps"
 	"github.com/ccw/ccw/internal/git"
 	"github.com/ccw/ccw/internal/tmux"
+	"golang.org/x/term"
 )
 
 type TmuxRunner interface {
@@ -222,7 +223,7 @@ func (m *Manager) CreateWorkspace(ctx context.Context, repo, branch string, opts
 		return Workspace{}, err
 	}
 
-	if !opts.NoAttach {
+	if !opts.NoAttach && term.IsTerminal(int(os.Stdout.Fd())) {
 		if err := m.tmux.AttachSession(safeName); err != nil {
 			return ws, err
 		}
@@ -278,7 +279,10 @@ func (m *Manager) OpenWorkspace(ctx context.Context, id string, resumeClaude boo
 		return err
 	}
 
-	return m.tmux.AttachSession(ws.TmuxSession)
+	if term.IsTerminal(int(os.Stdout.Fd())) {
+		return m.tmux.AttachSession(ws.TmuxSession)
+	}
+	return nil
 }
 
 func (m *Manager) updateLastAccessed(ctx context.Context, id string) error {
