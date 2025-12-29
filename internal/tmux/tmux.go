@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 
 	"golang.org/x/term"
@@ -100,6 +101,12 @@ func (r Runner) KillSession(name string) error {
 }
 
 func (r Runner) AttachSession(name string) error {
+	if os.Getenv("TMUX") != "" && runtime.GOOS == "darwin" {
+		if err := openNewMacTerminalWindow(name); err == nil {
+			return nil
+		}
+	}
+
 	if os.Getenv("TMUX") != "" {
 		if _, err := r.run(context.Background(), "switch-client", "-t", name); err == nil {
 			return nil
@@ -163,4 +170,27 @@ func normalizeTarget(target string) string {
 		return target
 	}
 	return target + ":"
+}
+
+func openNewMacTerminalWindow(session string) error {
+	app := "Terminal"
+	if os.Getenv("TERM_PROGRAM") == "iTerm.app" {
+		app = "iTerm"
+	}
+
+	var script string
+	if app == "iTerm" {
+		script = fmt.Sprintf(`tell application "iTerm"
+  create window with default profile command "tmux attach -t %s"
+  activate
+end tell`, session)
+	} else {
+		script = fmt.Sprintf(`tell application "Terminal"
+  do script "tmux attach -t %s"
+  activate
+end tell`, session)
+	}
+
+	cmd := exec.Command("osascript", "-e", script)
+	return cmd.Run()
 }
