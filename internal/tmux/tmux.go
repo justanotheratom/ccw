@@ -173,19 +173,21 @@ func normalizeTarget(target string) string {
 }
 
 func openNewMacTerminalWindow(session string) error {
+	command := tmuxAttachCommand(session)
+
 	app := pickMacTerminalApp()
 
 	var script string
 	if app == "iTerm" {
 		script = fmt.Sprintf(`tell application "iTerm"
-  create window with default profile command "tmux attach -t %s"
+  create window with default profile command "%s"
   activate
-end tell`, session)
+end tell`, command)
 	} else {
 		script = fmt.Sprintf(`tell application "Terminal"
-  do script "tmux attach -t %s"
+  do script "%s"
   activate
-end tell`, session)
+end tell`, command)
 	}
 
 	cmd := exec.Command("osascript", "-e", script)
@@ -203,4 +205,14 @@ func pickMacTerminalApp() string {
 		}
 	}
 	return "Terminal"
+}
+
+func tmuxAttachCommand(session string) string {
+	base := fmt.Sprintf("tmux attach -t %s", session)
+	tmuxEnv := os.Getenv("TMUX")
+	if tmuxEnv == "" {
+		return base
+	}
+	escaped := strings.ReplaceAll(tmuxEnv, `"`, `\"`)
+	return fmt.Sprintf("TMUX=\"%s\" %s", escaped, base)
 }
