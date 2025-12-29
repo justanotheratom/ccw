@@ -1,85 +1,132 @@
-# CCW (Claude Code Workspace)
+# CCWMenubar - macOS App
 
-CCW is a fast CLI that spins up Claude Code workspaces using git worktrees and tmux. It gives you a repeatable two-pane layout (Claude Code on the left, lazygit on the right), automatic worktree/branch wiring, and one-command attach/resume so you can hop between features without manual setup.
+A modern macOS application using a **workspace + SPM package** architecture for clean separation between app shell and feature code.
 
-## Features
-- `ccw new <repo> <branch>`: create a worktree, tmux session, and launch Claude/lazygit.
-- `ccw open <workspace>`: attach to an existing workspace (recreates the session if needed).
-- `ccw ls`: list workspaces with session status.
-- `ccw info <workspace>`: show detailed workspace metadata.
-- `ccw rm <workspace>`: best-effort cleanup of sessions, worktrees, and branches.
-- `ccw stale`: list merged branches (optionally delete them).
-- `ccw config`: view or set configuration values.
-- `ccw completion <shell>`: generate bash/zsh/fish completions.
+## Project Architecture
 
-Workspaces live under `~/.ccw` by default (`CCW_HOME` overrides). Repos are resolved from `repos_dir` in config (default `~/github`).
-
-## Install
-
-### Homebrew (macOS/Linux)
-```bash
-brew tap justanotheratom/ccw
-brew install ccw
+```
+CCWMenubar/
+├── CCWMenubar.xcworkspace/              # Open this file in Xcode
+├── CCWMenubar.xcodeproj/                # App shell project
+├── CCWMenubar/                          # App target (minimal)
+│   ├── Assets.xcassets/                # App-level assets (icons, colors)
+│   ├── CCWMenubarApp.swift              # App entry point
+│   ├── CCWMenubar.entitlements          # App sandbox settings
+│   └── CCWMenubar.xctestplan            # Test configuration
+├── CCWMenubarPackage/                   # 🚀 Primary development area
+│   ├── Package.swift                   # Package configuration
+│   ├── Sources/CCWMenubarFeature/       # Your feature code
+│   └── Tests/CCWMenubarFeatureTests/    # Unit tests
+└── CCWMenubarUITests/                   # UI automation tests
 ```
 
-### Manual download (examples)
-```bash
-curl -L https://github.com/justanotheratom/ccw/releases/latest/download/ccw-darwin-arm64 -o /usr/local/bin/ccw
-chmod +x /usr/local/bin/ccw
-```
-Replace the URL with the binary for your OS/arch:
-- macOS Intel: `ccw-darwin-amd64`
-- macOS Apple Silicon: `ccw-darwin-arm64`
-- Linux Intel: `ccw-linux-amd64`
-- Linux ARM: `ccw-linux-arm64`
+## Key Architecture Points
 
-### From source
-```bash
-git clone https://github.com/justanotheratom/ccw.git
-cd ccw
-make build
-sudo cp bin/ccw /usr/local/bin/
-```
+### Workspace + SPM Structure
+- **App Shell**: `CCWMenubar/` contains minimal app lifecycle code
+- **Feature Code**: `CCWMenubarPackage/Sources/CCWMenubarFeature/` is where most development happens
+- **Separation**: Business logic lives in the SPM package, app target just imports and displays it
 
-## Usage (common flow)
-```bash
-ccw new myrepo feature/cool-thing
-ccw open myrepo/feature/cool-thing
-ccw ls --all
-ccw info cool-thing           # fuzzy match
-ccw stale --rm --force
-ccw config repos_dir ~/projects
-```
+### Buildable Folders (Xcode 16)
+- Files added to the filesystem automatically appear in Xcode
+- No need to manually add files to project targets
+- Reduces project file conflicts in teams
 
-## Dependencies
-- Required: `git`, `tmux`
-- Recommended: `lazygit` (right pane)
-- Optional (macOS): iTerm2 if you want `iterm_cc_mode` (default) to use tmux `-CC` integration; otherwise ccw falls back to the system terminal.
-- Claude Code CLI: installed separately; `ccw new` launches it in the left pane.
+### App Sandbox
+The menubar app runs without App Sandbox and uses the hardened runtime for distribution. Apple Events automation is enabled for iTerm control in `Config/CCWMenubar.entitlements`.
 
-## Completions
-```bash
-ccw completion bash > /usr/local/etc/bash_completion.d/ccw
-ccw completion zsh > "${fpath[1]}/_ccw"
-ccw completion fish > ~/.config/fish/completions/ccw.fish
+## Development Notes
+
+### Code Organization
+Most development happens in `CCWMenubarPackage/Sources/CCWMenubarFeature/` - organize your code as you prefer.
+
+### Public API Requirements
+Types exposed to the app target need `public` access:
+```swift
+public struct SettingsView: View {
+    public init() {}
+    
+    public var body: some View {
+        // Your view code
+    }
+}
 ```
 
-## Homebrew
-The tap formula lives at `packaging/homebrew/ccw.rb` and is published to `justanotheratom/homebrew-ccw`. Update URLs/SHAs on each release.
+### Adding Dependencies
+Edit `CCWMenubarPackage/Package.swift` to add SPM dependencies:
+```swift
+dependencies: [
+    .package(url: "https://github.com/example/SomePackage", from: "1.0.0")
+],
+targets: [
+    .target(
+        name: "CCWMenubarFeature",
+        dependencies: ["SomePackage"]
+    ),
+]
+```
 
-## Release
-- Bump `cmd/root.go` version, then `go test ./...`.
-- Tag and push (example): `git commit -am "Release vX.Y.Z" && git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin HEAD:master --tags`
-- Wait for the GitHub Actions release to finish (builds macOS/Linux amd64/arm64 and uploads assets).
-- Tap automation: on `release` published, `.github/workflows/update-tap.yml` downloads assets, computes shas, rewrites the tap formula, and pushes to `justanotheratom/homebrew-ccw`. Requires `TAP_PAT` secret with `repo` access to that tap.
-- Verify: `brew update && brew reinstall ccw && ccw version` (should print the new version).
+### Test Structure
+- **Unit Tests**: `CCWMenubarPackage/Tests/CCWMenubarFeatureTests/` (Swift Testing framework)
+- **UI Tests**: `CCWMenubarUITests/` (XCUITest framework)
+- **Test Plan**: `CCWMenubar.xctestplan` coordinates all tests
 
-## Testing
-Tests rely on `git` and `tmux`. CI installs tmux; local runs may skip dependency checks by setting `CCW_SKIP_DEPS=1` when needed. Use `make test` to run the suite.
+## Configuration
 
-## Troubleshooting
-- **"tmux session not found"** after reboot: run `ccw open <workspace>` to recreate the session.
-- **Workspace shows as dead but files exist**: `ccw open <workspace>` to rebuild panes.
-- **Branch not merged** when removing: merge first, or use `ccw rm --force`/`--keep-branch`.
-- **Missing optional tools**: install `lazygit` for right-pane UI; `ccw` will continue without it.
-- **Dependency checks in CI**: set `CCW_SKIP_DEPS=1` to skip required/optional binary checks.
+### XCConfig Build Settings
+Build settings are managed through **XCConfig files** in `Config/`:
+- `Config/Shared.xcconfig` - Common settings (bundle ID, versions, deployment target)
+- `Config/Debug.xcconfig` - Debug-specific settings  
+- `Config/Release.xcconfig` - Release-specific settings
+- `Config/Tests.xcconfig` - Test-specific settings
+
+### App Sandbox & Entitlements
+The app uses Apple Events automation to focus iTerm windows. Update `Config/CCWMenubar.entitlements` if additional capabilities are needed.
+
+## Installation
+
+### Homebrew Cask
+```bash
+brew install --cask justanotheratom/tap/ccw-menubar
+```
+
+### Direct Download
+Download the latest DMG from GitHub Releases and drag `CCWMenubar.app` to `/Applications`.
+
+## macOS-Specific Features
+
+### Window Management
+Add multiple windows and settings panels:
+```swift
+@main
+struct CCWMenubarApp: App {
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+        
+        Settings {
+            SettingsView()
+        }
+    }
+}
+```
+
+### Asset Management
+- **App-Level Assets**: `CCWMenubar/Assets.xcassets/` (app icon with multiple sizes, accent color)
+- **Feature Assets**: Add `Resources/` folder to SPM package if needed
+
+### SPM Package Resources
+To include assets in your feature package:
+```swift
+.target(
+    name: "CCWMenubarFeature",
+    dependencies: [],
+    resources: [.process("Resources")]
+)
+```
+
+## Notes
+
+### Generated with XcodeBuildMCP
+This project was scaffolded using [XcodeBuildMCP](https://github.com/cameroncooke/XcodeBuildMCP), which provides tools for AI-assisted macOS development workflows.

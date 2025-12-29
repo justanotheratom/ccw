@@ -1566,6 +1566,7 @@ Create `packaging/homebrew/ccw-menubar.rb` as shown in the plan.
 #### RELEASE-1: Test and release
 **Depends on:** BUILD-3
 **Description:** Create first release.
+**Status:** Complete
 
 1. Tag with `menubar-v1.0.0`
 2. Verify GitHub Actions builds DMG
