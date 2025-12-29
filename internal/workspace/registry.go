@@ -149,7 +149,12 @@ func (s *Store) load() (Registry, error) {
 
 	var reg Registry
 	if err := json.Unmarshal(data, &reg); err != nil {
-		return Registry{}, fmt.Errorf("parse registry: %w", err)
+		backupReg, _, backupErr := s.loadLatestBackup()
+		if backupErr == nil {
+			// Recover silently from latest backup.
+			return backupReg, nil
+		}
+		return Registry{}, fmt.Errorf("parse registry and no usable backup: %w", err)
 	}
 
 	if reg.Version != CurrentVersion {
@@ -195,6 +200,47 @@ func (s *Store) save(reg Registry) error {
 	}
 
 	return nil
+}
+
+func (s *Store) loadLatestBackup() (Registry, string, error) {
+	dirEntries, err := os.ReadDir(s.root)
+	if err != nil {
+		return Registry{}, "", err
+	}
+
+	var latestPath string
+	var latestInfo os.FileInfo
+	for _, entry := range dirEntries {
+		if entry.IsDir() {
+			continue
+		}
+		if strings.HasPrefix(entry.Name(), registryFileName+".bak-") {
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			if latestInfo == nil || info.ModTime().After(latestInfo.ModTime()) {
+				latestInfo = info
+				latestPath = filepath.Join(s.root, entry.Name())
+			}
+		}
+	}
+
+	if latestPath == "" {
+		return Registry{}, "", fmt.Errorf("no backup found")
+	}
+
+	data, err := os.ReadFile(latestPath)
+	if err != nil {
+		return Registry{}, "", err
+	}
+
+	var reg Registry
+	if err := json.Unmarshal(data, &reg); err != nil {
+		return Registry{}, "", err
+	}
+
+	return reg, latestPath, nil
 }
 
 // Add inserts a workspace into the registry under the given ID. Returns an

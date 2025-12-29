@@ -11,10 +11,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ccw/ccw/internal/claude"
 	"github.com/ccw/ccw/internal/config"
 	"github.com/ccw/ccw/internal/deps"
 	"github.com/ccw/ccw/internal/git"
 	"github.com/ccw/ccw/internal/tmux"
+	"golang.org/x/term"
 )
 
 type TmuxRunner interface {
@@ -35,6 +37,8 @@ type Manager struct {
 
 	lazygitAvailable bool
 	skipDeps         bool
+	claudeCaps       claude.Capabilities
+	capsDetected     bool
 }
 
 type CreateOptions struct {
@@ -150,6 +154,13 @@ func (m *Manager) CreateWorkspace(ctx context.Context, repo, branch string, opts
 		return Workspace{}, err
 	}
 
+	if err := validateName(repo); err != nil {
+		return Workspace{}, fmt.Errorf("invalid repo name: %w", err)
+	}
+	if err := validateBranch(branch); err != nil {
+		return Workspace{}, fmt.Errorf("invalid branch name: %w", err)
+	}
+
 	reposDir, err := m.cfg.ExpandedReposDir()
 	if err != nil {
 		return Workspace{}, err
@@ -186,7 +197,7 @@ func (m *Manager) CreateWorkspace(ctx context.Context, repo, branch string, opts
 	}
 	rb.Add(func() { _ = git.RemoveWorktree(repoPath, worktreePath, true) })
 
-	if err := m.bootstrapSession(safeName, worktreePath, false); err != nil {
+	if err := m.bootstrapSession(ctx, safeName, worktreePath, false); err != nil {
 		rb.Run()
 		return Workspace{}, err
 	}
@@ -212,7 +223,7 @@ func (m *Manager) CreateWorkspace(ctx context.Context, repo, branch string, opts
 		return Workspace{}, err
 	}
 
-	if !opts.NoAttach {
+	if !opts.NoAttach && term.IsTerminal(int(os.Stdout.Fd())) {
 		if err := m.tmux.AttachSession(safeName); err != nil {
 			return ws, err
 		}
@@ -221,7 +232,7 @@ func (m *Manager) CreateWorkspace(ctx context.Context, repo, branch string, opts
 	return ws, nil
 }
 
-func (m *Manager) bootstrapSession(name, path string, resume bool) error {
+func (m *Manager) bootstrapSession(ctx context.Context, name, path string, resume bool) error {
 	if err := m.tmux.CreateSession(name, path, true); err != nil {
 		return err
 	}
@@ -230,10 +241,8 @@ func (m *Manager) bootstrapSession(name, path string, resume bool) error {
 		return err
 	}
 
-	claudeCmd := "claude"
-	if resume {
-		claudeCmd = fmt.Sprintf("claude --resume %s", name)
-	}
+	caps := m.claudeCapabilities(ctx)
+	claudeCmd := claude.BuildLaunchCommand(name, resume, caps)
 	if err := m.tmux.SendKeys(name+":0.0", []string{claudeCmd}, true); err != nil {
 		return err
 	}
@@ -261,7 +270,7 @@ func (m *Manager) OpenWorkspace(ctx context.Context, id string, resumeClaude boo
 	}
 
 	if !sessionExists {
-		if err := m.bootstrapSession(ws.TmuxSession, ws.WorktreePath, resumeClaude); err != nil {
+		if err := m.bootstrapSession(ctx, ws.TmuxSession, ws.WorktreePath, resumeClaude); err != nil {
 			return err
 		}
 	}
@@ -270,7 +279,10 @@ func (m *Manager) OpenWorkspace(ctx context.Context, id string, resumeClaude boo
 		return err
 	}
 
-	return m.tmux.AttachSession(ws.TmuxSession)
+	if term.IsTerminal(int(os.Stdout.Fd())) {
+		return m.tmux.AttachSession(ws.TmuxSession)
+	}
+	return nil
 }
 
 func (m *Manager) updateLastAccessed(ctx context.Context, id string) error {
@@ -320,6 +332,10 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, id string, opts RemoveOpt
 		return err
 	}
 
+	if err := validateName(id); err != nil {
+		return fmt.Errorf("invalid workspace identifier: %w", err)
+	}
+
 	resolvedID, ws, err := m.lookupWorkspace(ctx, id)
 	if err != nil {
 		return err
@@ -344,7 +360,7 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, id string, opts RemoveOpt
 				return err
 			}
 			if !merged {
-				return git.ErrBranchNotMerged
+				return fmt.Errorf("branch %q is not merged into %q.\nUse --force to delete anyway, or --keep-branch to only remove the workspace.", ws.Branch, ws.BaseBranch)
 			}
 
 			unpushed, err := git.HasUnpushedCommits(ws.RepoPath, ws.Branch)
@@ -352,7 +368,7 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, id string, opts RemoveOpt
 				return err
 			}
 			if unpushed {
-				return fmt.Errorf("branch has unpushed commits")
+				return fmt.Errorf("branch %q has unpushed commits. Push or use --force/--keep-branch.", ws.Branch)
 			}
 		}
 
@@ -387,6 +403,10 @@ func combineErrors(errs []error) error {
 }
 
 func (m *Manager) lookupWorkspace(ctx context.Context, query string) (string, Workspace, error) {
+	if err := validateName(query); err != nil {
+		return "", Workspace{}, fmt.Errorf("invalid workspace identifier: %w", err)
+	}
+
 	reg, err := m.regStore.Read(ctx)
 	if err != nil {
 		return "", Workspace{}, err
@@ -403,7 +423,7 @@ func (m *Manager) lookupWorkspace(ctx context.Context, query string) (string, Wo
 	}
 
 	if len(matches) > 1 {
-		return "", Workspace{}, fmt.Errorf("multiple workspaces match: %s", strings.Join(matches, ", "))
+		return "", Workspace{}, fmt.Errorf("multiple workspaces match: %s\nPlease specify a full workspace ID (repo/branch).", strings.Join(matches, ", "))
 	}
 
 	return "", Workspace{}, fmt.Errorf("workspace %s not found (try ccw ls)", query)
@@ -500,6 +520,56 @@ func (m *Manager) ResetConfig() (config.Config, error) {
 	}
 	m.cfg = cfg
 	return cfg, nil
+}
+
+func (m *Manager) claudeCapabilities(ctx context.Context) claude.Capabilities {
+	if m.capsDetected {
+		return m.claudeCaps
+	}
+
+	m.capsDetected = true
+	if m.skipDeps || os.Getenv("CCW_SKIP_DEPS") == "1" {
+		m.claudeCaps = claude.DefaultCapabilities()
+		return m.claudeCaps
+	}
+
+	caps, err := claude.DetectCapabilities(ctx)
+	if err != nil {
+		m.claudeCaps = claude.DefaultCapabilities()
+		return m.claudeCaps
+	}
+	m.claudeCaps = caps
+	return m.claudeCaps
+}
+
+func validateName(name string) error {
+	if name == "" {
+		return fmt.Errorf("name cannot be empty")
+	}
+	if strings.Contains(name, "..") {
+		return fmt.Errorf("name cannot contain '..'")
+	}
+	if filepath.IsAbs(name) {
+		return fmt.Errorf("name cannot be an absolute path")
+	}
+	if strings.ContainsAny(name, "\x00") {
+		return fmt.Errorf("name contains invalid characters")
+	}
+	if strings.ContainsAny(name, "\\") {
+		return fmt.Errorf("name cannot contain backslashes")
+	}
+	return nil
+}
+
+func validateBranch(branch string) error {
+	if err := validateName(branch); err != nil {
+		return err
+	}
+	// Allow branch slashes but forbid traversal.
+	if strings.Contains(branch, "/../") || strings.HasPrefix(branch, "../") || strings.HasSuffix(branch, "/..") {
+		return fmt.Errorf("branch cannot traverse directories")
+	}
+	return nil
 }
 
 type rollback struct {

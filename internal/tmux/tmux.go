@@ -5,12 +5,21 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
+
+	"golang.org/x/term"
 )
 
 type Runner struct {
-	CCMode bool
+	// CCMode controls whether tmux commands executed in this process include -CC.
+	// PreferCC tracks the user's preference (from config) so we can honor it when
+	// spawning new macOS windows (even if CCMode is disabled in the current shell).
+	CCMode   bool
+	PreferCC bool
 }
 
 var (
@@ -19,7 +28,17 @@ var (
 )
 
 func NewRunner(ccMode bool) Runner {
-	return Runner{CCMode: ccMode}
+	preferCC := ccMode
+	// Disable -CC unless running in iTerm with a real TTY.
+	if ccMode {
+		if os.Getenv("TERM_PROGRAM") != "iTerm.app" {
+			ccMode = false
+		}
+		if !term.IsTerminal(int(os.Stdout.Fd())) {
+			ccMode = false
+		}
+	}
+	return Runner{CCMode: ccMode, PreferCC: preferCC}
 }
 
 func (r Runner) cmdArgs(args []string) []string {
@@ -32,6 +51,7 @@ func (r Runner) cmdArgs(args []string) []string {
 func (r Runner) run(ctx context.Context, args ...string) (string, error) {
 	fullArgs := r.cmdArgs(args)
 	cmd := exec.CommandContext(ctx, "tmux", fullArgs...)
+	cmd.Stdin = os.Stdin
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -87,6 +107,18 @@ func (r Runner) KillSession(name string) error {
 }
 
 func (r Runner) AttachSession(name string) error {
+	if runtime.GOOS == "darwin" {
+		if err := openNewMacTerminalWindow(name, r.PreferCC); err == nil {
+			return nil
+		} else {
+			return fmt.Errorf("failed to open macOS terminal window for tmux session %s: %w", name, err)
+		}
+	}
+
+	if os.Getenv("TMUX") != "" {
+		return fmt.Errorf("inside tmux; run ccw open from a non-tmux shell")
+	}
+
 	_, err := r.run(context.Background(), "attach", "-t", name)
 	return err
 }
@@ -144,4 +176,106 @@ func normalizeTarget(target string) string {
 		return target
 	}
 	return target + ":"
+}
+
+func openNewMacTerminalWindow(session string, ccMode bool) error {
+	tmuxBin := tmuxBinary()
+	app := pickMacTerminalApp()
+	useCC := ccMode && app == "iTerm"
+	command := tmuxAttachCommand(tmuxBin, session, useCC)
+	appleCmd := escapeAppleScript(command)
+
+	var script string
+	if app == "iTerm" {
+		script = fmt.Sprintf(`tell application "iTerm"
+  set controlWindow to (create window with default profile command "%s")
+  try
+    tell application "Finder" to set screenBounds to bounds of window of desktop
+    if %t then
+      delay 0.2
+      repeat with w in windows
+        if miniaturized of w is false then
+          set bounds of w to screenBounds
+        end if
+      end repeat
+      set miniaturized of controlWindow to true
+    else
+      set bounds of controlWindow to screenBounds
+    end if
+  end try
+  activate
+end tell`, appleCmd, useCC)
+		if err := runOsaScript(script); err != nil {
+			// Fallback: simpler script without resize/minimize gymnastics.
+			fallback := fmt.Sprintf(`tell application "iTerm"
+  create window with default profile command "%s"
+  activate
+end tell`, appleCmd)
+			if err2 := runOsaScript(fallback); err2 != nil {
+				return fmt.Errorf("osascript iTerm: %v (fallback: %v)", err, err2)
+			}
+		}
+		return nil
+	} else {
+		script = fmt.Sprintf(`tell application "Terminal"
+  do script "%s"
+  activate
+end tell`, appleCmd)
+	}
+
+	return runOsaScript(script)
+}
+
+func pickMacTerminalApp() string {
+	paths := []string{
+		"/Applications/iTerm.app",
+		filepath.Join(os.Getenv("HOME"), "Applications/iTerm.app"),
+	}
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			return "iTerm"
+		}
+	}
+	return "Terminal"
+}
+
+func tmuxAttachCommand(tmuxBin, session string, ccMode bool) string {
+	base := fmt.Sprintf("%s attach -t %s", shellQuote(tmuxBin), session)
+	if ccMode {
+		base = fmt.Sprintf("%s -CC attach -t %s", shellQuote(tmuxBin), session)
+	}
+	return base
+}
+
+func tmuxBinary() string {
+	if p, err := exec.LookPath("tmux"); err == nil {
+		return p
+	}
+	return "tmux"
+}
+
+func shellQuote(s string) string {
+	if s == "" {
+		return "''"
+	}
+	if !strings.ContainsAny(s, " '\"\\$") {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, `'`, `'\''`) + "'"
+}
+
+func runOsaScript(script string) error {
+	cmd := exec.Command("osascript", "-e", script)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%w (stderr: %s)", err, strings.TrimSpace(stderr.String()))
+	}
+	return nil
+}
+
+func escapeAppleScript(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\\"`)
+	return s
 }

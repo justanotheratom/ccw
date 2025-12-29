@@ -1,15 +1,29 @@
 # Claude CLI Behavior Notes (T1.7)
 
-Assumptions to validate for future implementation:
+## Verified Behavior (Claude Code 2.0.76)
 
-- `claude --resume <session_name>` resumes an existing Claude Code session without prompting.
-- Session rename support: Claude Code accepts rename commands triggered externally after a short delay; start with a 5 second delay as default and adjust if the CLI exposes a safer flag.
-- Launch command uses `claude` binary from PATH; no additional flags are required for basic interactive mode.
-- If `--resume` fails (unknown session), fallback should allow creating/selecting a session manually.
+- `claude --help` available; no `--session-name`/`--name` flag advertised.
+- `claude --resume <uuid>` is accepted; invalid UUIDs error immediately.
+- `claude --resume <nonexistent-uuid>` returns: `No conversation found with session ID: <uuid>`.
+- Basic launch without flags opens an interactive session.
 
-Open verification items:
-- Confirm whether `--resume` creates a new session when the name does not exist or exits with an error.
-- Confirm if there is a dedicated flag for setting the session name at launch to avoid sending rename keystrokes.
-- Measure minimum safe delay before issuing a rename to avoid race conditions.
+## Items to Validate (still TODO)
 
-These assumptions will be revisited before building session management in Phase 4 to ensure the behavior matches the real CLI.
+- Minimum safe delay if keystrokes are required for renaming (no flag found).
+- Behavior when resuming valid, existing sessions (requires a real session ID).
+
+## Fallback Strategy
+
+1) Detect capabilities at runtime (implemented in code):
+   - Parse `claude --help` for resume/name flags (resume supported; no name flag found).
+   - Use flags when available; otherwise fall back to keystrokes with a configurable delay.
+2) If resume fails, warn the user and offer manual session selection or fresh launch (future improvement).
+3) Allow overrides via environment variable (e.g., `CCW_CLAUDE_MODE`) once detection is implemented.
+
+## Compatibility Matrix (to fill as versions are tested)
+
+| Claude CLI Version | Resume Support          | Rename Method            | Status             |
+|--------------------|-------------------------|-------------------------|--------------------|
+| 2.0.76 (Code)      | Yes (`--resume <uuid>`) | No name flag; keystroke | Verified (no name) |
+
+Update this document as real versions are verified during release testing.
