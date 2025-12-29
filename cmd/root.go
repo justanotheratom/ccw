@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	version = "0.1.22"
+	version = "0.1.23"
 
 	// Commands exempt from onboarding requirement
 	onboardingExemptCmds = map[string]bool{
