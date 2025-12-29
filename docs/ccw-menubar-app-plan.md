@@ -991,6 +991,17 @@ func findITermApp() string {
 #### APP-0: CLI parity checklist
 **Depends on:** CLI-1 through CLI-7
 **Description:** Map CLI commands/flags to menubar actions, confirm required JSON schemas, and mark any CLI features that will remain CLI-only.
+**Status:** Complete
+
+Checklist:
+- `ccw ls --json` -> workspace list + status icon
+- `ccw open <id> [--no-resume]` -> row click / context menu
+- `ccw new <repo> <branch> --no-attach [--base]` -> New Workspace
+- `ccw rm <id> --yes [--force]` -> Remove
+- `ccw info <id> --json` -> Info sheet
+- `ccw stale --json` -> Stale submenu
+- `ccw repos --json` -> repo dropdown
+- `ccw check --json` -> onboarding dependencies
 
 ---
 
