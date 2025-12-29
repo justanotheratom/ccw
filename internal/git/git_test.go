@@ -204,3 +204,11 @@ func TestRemoveWorktreeSuccess(t *testing.T) {
 		t.Fatalf("expected worktree directory to be removed")
 	}
 }
+
+func TestRemoveWorktreeMissingIsOk(t *testing.T) {
+	repo := initRepo(t)
+	err := RemoveWorktree(repo, "/tmp/ccw-missing-worktree", true)
+	if err != nil {
+		t.Fatalf("expected no error for missing worktree, got %v", err)
+	}
+}

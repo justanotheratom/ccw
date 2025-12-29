@@ -49,6 +49,13 @@ func CreateWorktree(repoPath, path, branch string) error {
 }
 
 func RemoveWorktree(repoPath, path string, force bool) error {
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
 	args := []string{"worktree", "remove"}
 	if force {
 		args = append(args, "--force")
@@ -56,5 +63,8 @@ func RemoveWorktree(repoPath, path string, force bool) error {
 	args = append(args, path)
 
 	_, err := runGit(context.Background(), repoPath, args...)
+	if err != nil && strings.Contains(err.Error(), "is not a working tree") {
+		return nil
+	}
 	return err
 }
