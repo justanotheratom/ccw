@@ -728,6 +728,7 @@ func (m *Manager) ListWorkspaces(ctx context.Context) ([]WorkspaceStatus, error)
 **File:** `internal/tmux/tmux.go`
 **Depends on:** CLI-1
 **Description:** Update AttachSession to focus existing window if connected.
+**Status:** Complete
 
 1. Add focusExistingMacWindow function:
 ```go

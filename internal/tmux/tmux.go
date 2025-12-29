@@ -119,11 +119,15 @@ func (r Runner) KillSession(name string) error {
 
 func (r Runner) AttachSession(name string) error {
 	if runtime.GOOS == "darwin" {
+		if hasClients, _ := r.HasAttachedClients(name); hasClients {
+			if err := focusExistingMacWindow(name); err == nil {
+				return nil
+			}
+		}
 		if err := openNewMacTerminalWindow(name, r.PreferCC); err == nil {
 			return nil
-		} else {
-			return fmt.Errorf("failed to open macOS terminal window for tmux session %s: %w", name, err)
 		}
+		return fmt.Errorf("failed to open macOS terminal window for tmux session %s: %w", name, err)
 	}
 
 	if os.Getenv("TMUX") != "" {
@@ -132,6 +136,19 @@ func (r Runner) AttachSession(name string) error {
 
 	_, err := r.run(context.Background(), "attach", "-t", name)
 	return err
+}
+
+func focusExistingMacWindow(session string) error {
+	script := fmt.Sprintf(`tell application "iTerm"
+  repeat with w in windows
+    if name of w contains "%s" then
+      set frontmost of w to true
+      activate
+      return
+    end if
+  end repeat
+end tell`, escapeAppleScript(session))
+	return runOsaScript(script)
 }
 
 func (r Runner) SplitPane(session string, horizontal bool, path string) error {
