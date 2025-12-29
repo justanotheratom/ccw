@@ -190,7 +190,10 @@ func openNewMacTerminalWindow(session string, ccMode bool) error {
 		script = fmt.Sprintf(`tell application "iTerm"
   set newWindow to (create window with default profile command "%s")
   try
-    set zoomed of newWindow to true
+    tell application "Finder"
+      set screenBounds to bounds of window of desktop
+    end tell
+    set bounds of newWindow to screenBounds
     if %t then
       set miniaturized of newWindow to true
     end if
