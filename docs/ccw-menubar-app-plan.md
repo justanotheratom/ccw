@@ -1548,6 +1548,7 @@ Key points:
 #### BUILD-2: Create GitHub Actions workflow
 **Depends on:** BUILD-1, CLI-1 through CLI-7
 **Description:** Automate the build process, including signing and notarization.
+**Status:** Complete
 
 Create `.github/workflows/release-menubar.yml` as shown in the plan.
 
