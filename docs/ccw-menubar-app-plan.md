@@ -1521,6 +1521,7 @@ Key points:
 #### APP-6: Polish (keyboard shortcuts, stale workspaces)
 **Depends on:** APP-5
 **Description:** Add remaining features.
+**Status:** Complete
 
 1. Add SPM dependency: `sindresorhus/KeyboardShortcuts`
 2. Implement global hotkey to show/hide menu

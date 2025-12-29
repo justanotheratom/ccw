@@ -1,4 +1,6 @@
 import SwiftUI
+import KeyboardShortcuts
+import LaunchAtLogin
 
 public struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
@@ -29,6 +31,9 @@ public struct SettingsView: View {
 
             Toggle("iTerm CC Mode", isOn: $itermCCMode)
             Toggle("Skip permission prompts", isOn: $skipPerms)
+            LaunchAtLogin.Toggle()
+
+            KeyboardShortcuts.Recorder("Toggle Menu", name: .toggleMenu)
 
             HStack {
                 Button("Re-run Setup") {
@@ -71,4 +76,8 @@ public struct SettingsView: View {
         await appState.setConfig(key: "claude_dangerously_skip_permissions", value: skipPerms ? "true" : "false")
         await appState.loadConfig()
     }
+}
+
+extension KeyboardShortcuts.Name {
+    public static let toggleMenu = Self("toggleMenu")
 }

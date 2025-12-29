@@ -75,6 +75,18 @@ public struct MenuBarView: View {
                 ForEach(appState.workspaces) { workspace in
                     WorkspaceRow(workspace: workspace)
                 }
+                if !appState.staleWorkspaces.isEmpty {
+                    Divider()
+                    Menu("Stale Workspaces (\(appState.staleWorkspaces.count))") {
+                        ForEach(appState.staleWorkspaces) { workspace in
+                            Button(workspace.id) {
+                                Task { await appState.openWorkspace(workspace.id) }
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 6)
+                }
             }
         }
     }

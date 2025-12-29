@@ -4,6 +4,7 @@ import SwiftUI
 @MainActor
 public final class AppState: ObservableObject {
     @Published public var workspaces: [WorkspaceStatus] = []
+    @Published public var staleWorkspaces: [WorkspaceStatus] = []
     @Published public var isLoading = false
     @Published public var error: Error?
     @Published public var workspaceInfo: WorkspaceInfo?
@@ -54,6 +55,7 @@ public final class AppState: ObservableObject {
 
         do {
             workspaces = try await cli.listWorkspaces()
+            staleWorkspaces = try await cli.staleWorkspaces()
             error = nil
         } catch {
             self.error = error
