@@ -1535,6 +1535,7 @@ Key points:
 #### BUILD-1: Set up Xcode project structure
 **Depends on:** APP-1
 **Description:** Configure Xcode project for embedding ccw binary and distribution settings.
+**Status:** Complete
 
 1. Add "Run Script" build phase to copy ccw into app bundle (Debug + Release)
 2. Add `Entitlements.plist` with `com.apple.security.automation.apple-events`; disable App Sandbox; enable Hardened Runtime (Release)

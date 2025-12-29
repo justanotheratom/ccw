@@ -114,6 +114,7 @@
 			buildPhases = (
 				8BC265582DEDD3F400F279A4 /* Sources */,
 				8BC265592DEDD3F400F279A4 /* Frameworks */,
+				8B90D1C82DF0000000FBD189 /* Embed ccw */,
 				8BC2655A2DEDD3F400F279A4 /* Resources */,
 			);
 			buildRules = (
@@ -211,6 +212,23 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		8B90D1C82DF0000000FBD189 /* Embed ccw */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/MacOS/ccw",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ -f \"${SRCROOT}/ccw\" ]; then\n  cp \"${SRCROOT}/ccw\" \"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS/ccw\"\nelse\n  echo \"ccw binary not found at ${SRCROOT}/ccw\" >&2\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		8BC265582DEDD3F400F279A4 /* Sources */ = {

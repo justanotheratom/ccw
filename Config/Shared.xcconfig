@@ -21,9 +21,12 @@ MACOSX_DEPLOYMENT_TARGET = 13.0
 // Info PLIST
 // ==========================================
 GENERATE_INFOPLIST_FILE = YES
+INFOPLIST_KEY_LSUIElement = YES
+INFOPLIST_KEY_NSAppleEventsUsageDescription = CCW Menubar needs to control iTerm to focus existing sessions.
 
 // ==========================================
 // Entitlements
 // ==========================================
 // AI agents can modify Config/CCWMenubar.entitlements to add capabilities
 CODE_SIGN_ENTITLEMENTS = Config/CCWMenubar.entitlements
+ENABLE_APP_SANDBOX = NO
