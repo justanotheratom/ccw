@@ -1557,6 +1557,7 @@ Create `.github/workflows/release-menubar.yml` as shown in the plan.
 #### BUILD-3: Create Homebrew cask formula
 **Depends on:** BUILD-2
 **Description:** Add cask for installation.
+**Status:** Complete
 
 Create `packaging/homebrew/ccw-menubar.rb` as shown in the plan.
 
