@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -170,10 +171,7 @@ func normalizeTarget(target string) string {
 }
 
 func openNewMacTerminalWindow(session string) error {
-	app := "Terminal"
-	if os.Getenv("TERM_PROGRAM") == "iTerm.app" {
-		app = "iTerm"
-	}
+	app := pickMacTerminalApp()
 
 	var script string
 	if app == "iTerm" {
@@ -190,4 +188,17 @@ end tell`, session)
 
 	cmd := exec.Command("osascript", "-e", script)
 	return cmd.Run()
+}
+
+func pickMacTerminalApp() string {
+	paths := []string{
+		"/Applications/iTerm.app",
+		filepath.Join(os.Getenv("HOME"), "Applications/iTerm.app"),
+	}
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			return "iTerm"
+		}
+	}
+	return "Terminal"
 }
