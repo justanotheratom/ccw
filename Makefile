@@ -17,3 +17,8 @@ tidy:
 run-menubar:
 	@go build -o ccw .
 	@open CCWMenubar.xcworkspace
+
+.PHONY: build-menubar
+build-menubar:
+	@go build -o ccw .
+	@xcodebuild -workspace CCWMenubar.xcworkspace -scheme CCWMenubar -configuration Debug build
