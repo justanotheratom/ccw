@@ -26,6 +26,7 @@ struct CCWMenubarApp: App {
         .menuBarExtraStyle(.window)
         .onChange(of: menuState.isInserted) { newValue in
             logger.info("menu bar extra isInserted=\(newValue, privacy: .public)")
+            NSLog("CCWMenubar[ui] menu bar extra isInserted=\(newValue)")
             if newValue {
                 Task { await appState.refreshWorkspaces() }
             }
