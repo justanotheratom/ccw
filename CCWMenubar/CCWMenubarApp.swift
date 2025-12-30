@@ -5,27 +5,28 @@ import KeyboardShortcuts
 @main
 struct CCWMenubarApp: App {
     @StateObject private var appState = AppState()
-    @State private var isMenuPresented = false
-    
+    @StateObject private var menuState: MenuState
+
     init() {
+        let state = MenuState()
+        _menuState = StateObject(wrappedValue: state)
         KeyboardShortcuts.onKeyUp(for: .toggleMenu) {
-            NotificationCenter.default.post(name: .toggleMenuRequested, object: nil)
+            DispatchQueue.main.async {
+                state.isInserted.toggle()
+            }
         }
     }
 
     var body: some Scene {
-        MenuBarExtra("CCW", systemImage: statusImageName, isPresented: $isMenuPresented) {
+        MenuBarExtra("CCW", systemImage: statusImageName, isInserted: $menuState.isInserted) {
             MenuBarView()
                 .environmentObject(appState)
         }
         .menuBarExtraStyle(.window)
-        .onChange(of: isMenuPresented) { newValue in
+        .onChange(of: menuState.isInserted) { newValue in
             if newValue {
                 Task { await appState.refreshWorkspaces() }
             }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .toggleMenuRequested)) { _ in
-            isMenuPresented.toggle()
         }
 
         Settings {
@@ -48,6 +49,6 @@ struct CCWMenubarApp: App {
     }
 }
 
-extension Notification.Name {
-    static let toggleMenuRequested = Notification.Name("ccw.toggleMenuRequested")
+final class MenuState: ObservableObject {
+    @Published var isInserted = false
 }
