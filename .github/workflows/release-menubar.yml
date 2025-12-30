@@ -138,7 +138,7 @@ jobs:
             ]
           end
           EOF
-          if git diff --quiet -- Casks/ccw-menubar.rb; then
+          if [ -z "$(git status --porcelain -- Casks/ccw-menubar.rb)" ]; then
             echo "Cask unchanged"
             exit 0
           fi
