@@ -1,4 +1,5 @@
 import SwiftUI
+import Dispatch
 import KeyboardShortcuts
 import ServiceManagement
 
@@ -12,6 +13,7 @@ public struct SettingsView: View {
     @State private var skipPerms = false
     @State private var showingOnboarding = false
     @State private var launchAtLoginEnabled = (SMAppService.mainApp.status == .enabled)
+    @State private var hasLoadedLaunchAtLogin = false
 
     public init() {}
 
@@ -34,6 +36,7 @@ public struct SettingsView: View {
             Toggle("Skip permission prompts", isOn: $skipPerms)
             Toggle("Launch at Login", isOn: $launchAtLoginEnabled)
                 .onChange(of: launchAtLoginEnabled) { newValue in
+                    guard hasLoadedLaunchAtLogin else { return }
                     do {
                         if newValue {
                             try SMAppService.mainApp.register()
@@ -41,7 +44,9 @@ public struct SettingsView: View {
                             try SMAppService.mainApp.unregister()
                         }
                     } catch {
-                        launchAtLoginEnabled = (SMAppService.mainApp.status == .enabled)
+                        DispatchQueue.main.async {
+                            launchAtLoginEnabled = (SMAppService.mainApp.status == .enabled)
+                        }
                     }
                 }
 
@@ -66,6 +71,7 @@ public struct SettingsView: View {
         .task {
             await loadConfig()
             launchAtLoginEnabled = (SMAppService.mainApp.status == .enabled)
+            hasLoadedLaunchAtLogin = true
         }
         .sheet(isPresented: $showingOnboarding) {
             OnboardingView()
