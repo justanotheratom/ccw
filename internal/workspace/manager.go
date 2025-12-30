@@ -191,6 +191,12 @@ func (m *Manager) CreateWorkspace(ctx context.Context, repo, branch string, opts
 	}
 	rb.Add(func() { _ = git.DeleteBranch(repoPath, branch, true) })
 
+	if err := git.PushBranch(repoPath, branch); err != nil {
+		rb.Run()
+		return Workspace{}, err
+	}
+	rb.Add(func() { _ = git.DeleteRemoteBranch(repoPath, "origin", branch) })
+
 	if err := git.CreateWorktree(repoPath, worktreePath, branch); err != nil {
 		rb.Run()
 		return Workspace{}, err
