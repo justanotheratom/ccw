@@ -4,14 +4,22 @@ import SwiftUI
 @MainActor
 public final class AppState: ObservableObject {
     private let logger = CCWLog.appState
-    @Published public var workspaces: [WorkspaceStatus] = []
-    @Published public var staleWorkspaces: [WorkspaceStatus] = []
-    @Published public var isLoading = false
+    @Published public var workspaces: [WorkspaceStatus] = [] {
+        didSet { NSLog("CCWMenubar[app-state] workspaces didSet count=\(workspaces.count)") }
+    }
+    @Published public var staleWorkspaces: [WorkspaceStatus] = [] {
+        didSet { NSLog("CCWMenubar[app-state] staleWorkspaces didSet count=\(staleWorkspaces.count)") }
+    }
+    @Published public var isLoading = false {
+        didSet { NSLog("CCWMenubar[app-state] isLoading didSet value=\(isLoading)") }
+    }
     @Published public var error: Error?
     @Published public var workspaceInfo: WorkspaceInfo?
     @Published public var showingWorkspaceInfo = false
     @Published public var config: CCWConfig?
-    @Published public var setupState: SetupState = .checking
+    @Published public var setupState: SetupState = .checking {
+        didSet { NSLog("CCWMenubar[app-state] setupState didSet value=\(String(describing: setupState))") }
+    }
 
     public enum SetupState {
         case checking
@@ -22,14 +30,24 @@ public final class AppState: ObservableObject {
     }
 
     private var cli: CLIBridge?
+    private var didStart = false
 
     public init() {
         logger.info("init start (mainThread=\(Thread.isMainThread, privacy: .public))")
         NSLog("CCWMenubar[app-state] init start (mainThread=\(Thread.isMainThread))")
-        Task { await initialize() }
+    }
+
+    public func start() {
+        guard !didStart else { return }
+        didStart = true
+        Task {
+            await Task.yield()
+            await initialize()
+        }
     }
 
     private func initialize() async {
+        await Task.yield()
         do {
             logger.info("initialize: creating CLI bridge")
             NSLog("CCWMenubar[app-state] initialize: creating CLI bridge")
@@ -66,7 +84,9 @@ public final class AppState: ObservableObject {
     }
 
     public func refreshWorkspaces() async {
+        await Task.yield()
         guard let cli = cli else { return }
+        guard !isLoading else { return }
         let start = Date()
         logger.info("refreshWorkspaces start (mainThread=\(Thread.isMainThread, privacy: .public))")
         NSLog("CCWMenubar[app-state] refreshWorkspaces start (mainThread=\(Thread.isMainThread))")
@@ -89,6 +109,7 @@ public final class AppState: ObservableObject {
             NSLog("CCWMenubar[app-state] refreshWorkspaces failed elapsed=\(elapsed)s error=\(error.localizedDescription)")
         }
     }
+
 
     public func openWorkspace(_ id: String, resume: Bool = true) async {
         guard let cli = cli else { return }

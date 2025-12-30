@@ -20,21 +20,25 @@ public actor CLIBridge {
     private let decoder: JSONDecoder
 
     public init() throws {
-        guard let url = Bundle.main.url(forAuxiliaryExecutable: "ccw") else {
+        let env = ProcessInfo.processInfo.environment
+        if let override = env["CCW_BIN_PATH"], FileManager.default.isExecutableFile(atPath: override) {
+            self.ccwURL = URL(fileURLWithPath: override)
+            logger.notice("using CCW_BIN_PATH override at \(override, privacy: .public)")
+            NSLog("CCWMenubar[cli] using CCW_BIN_PATH override at \(override)")
+        } else if let url = Bundle.main.url(forAuxiliaryExecutable: "ccw") {
+            self.ccwURL = url
+        } else if let url = Self.findCCWInPath() {
+            self.ccwURL = url
+            logger.notice("ccw not in bundle, falling back to PATH at \(url.path, privacy: .public)")
+            NSLog("CCWMenubar[cli] ccw not in bundle, falling back to PATH at \(url.path)")
+        } else {
             throw CLIError.ccwNotFound
         }
-        self.ccwURL = url
         let decoder = JSONDecoder()
-        let fractionalFormatter = ISO8601DateFormatter()
-        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let fallbackFormatter = ISO8601DateFormatter()
         decoder.dateDecodingStrategy = .custom { decoder in
             let container = try decoder.singleValueContainer()
             let value = try container.decode(String.self)
-            if let date = fractionalFormatter.date(from: value) {
-                return date
-            }
-            if let date = fallbackFormatter.date(from: value) {
+            if let date = Self.parseISO8601Date(value) {
                 return date
             }
             throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid ISO8601 date: \(value)")
@@ -120,22 +124,70 @@ public actor CLIBridge {
         process.standardOutput = stdout
         process.standardError = stderr
 
-        try process.run()
-        process.waitUntilExit()
+        let stdoutHandle = stdout.fileHandleForReading
+        let stderrHandle = stderr.fileHandleForReading
+        let stdoutTask = Task { try await stdoutHandle.readToEnd() ?? Data() }
+        let stderrTask = Task { try await stderrHandle.readToEnd() ?? Data() }
 
-        if process.terminationStatus != 0 {
-            let errorData = stderr.fileHandleForReading.readDataToEndOfFile()
+        let status: Int32
+        do {
+            status = try await withCheckedThrowingContinuation { continuation in
+                process.terminationHandler = { process in
+                    continuation.resume(returning: process.terminationStatus)
+                }
+                do {
+                    try process.run()
+                } catch {
+                    process.terminationHandler = nil
+                    continuation.resume(throwing: error)
+                }
+            }
+        } catch {
+            stdoutTask.cancel()
+            stderrTask.cancel()
+            throw error
+        }
+        process.terminationHandler = nil
+
+        let output = try await stdoutTask.value
+        let errorData = try await stderrTask.value
+        if status != 0 {
             let errorMsg = String(data: errorData, encoding: .utf8) ?? "Unknown error"
             let elapsed = Date().timeIntervalSince(start)
-            logger.error("execute failed status=\(process.terminationStatus, privacy: .public) elapsed=\(elapsed, privacy: .public)s error=\(errorMsg, privacy: .public)")
-            NSLog("CCWMenubar[cli] execute failed status=\(process.terminationStatus) elapsed=\(elapsed)s error=\(errorMsg)")
+            logger.error("execute failed status=\(status, privacy: .public) elapsed=\(elapsed, privacy: .public)s error=\(errorMsg, privacy: .public)")
+            NSLog("CCWMenubar[cli] execute failed status=\(status) elapsed=\(elapsed)s error=\(errorMsg)")
             throw CLIError.commandFailed(errorMsg)
         }
 
-        let output = stdout.fileHandleForReading.readDataToEndOfFile()
         let elapsed = Date().timeIntervalSince(start)
         logger.info("execute success elapsed=\(elapsed, privacy: .public)s bytes=\(output.count, privacy: .public)")
         NSLog("CCWMenubar[cli] execute success elapsed=\(elapsed)s bytes=\(output.count)")
         return output
+    }
+
+    private static func findCCWInPath() -> URL? {
+#if DEBUG
+        let env = ProcessInfo.processInfo.environment
+        let defaultPath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        let envPath = env["PATH"] ?? ""
+        let combined = [envPath, defaultPath].joined(separator: ":")
+        for entry in combined.split(separator: ":") {
+            let candidate = URL(fileURLWithPath: String(entry)).appendingPathComponent("ccw")
+            if FileManager.default.isExecutableFile(atPath: candidate.path) {
+                return candidate
+            }
+        }
+#endif
+        return nil
+    }
+
+    private static func parseISO8601Date(_ value: String) -> Date? {
+        let fractionalFormatter = ISO8601DateFormatter()
+        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractionalFormatter.date(from: value) {
+            return date
+        }
+        let fallbackFormatter = ISO8601DateFormatter()
+        return fallbackFormatter.date(from: value)
     }
 }

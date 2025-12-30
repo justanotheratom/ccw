@@ -4,11 +4,13 @@ import KeyboardShortcuts
 
 @main
 struct CCWMenubarApp: App {
-    @StateObject private var appState = AppState()
+    @StateObject private var appState: AppState
     @StateObject private var menuState: MenuState
     private let logger = CCWLog.ui
 
     init() {
+        let appState = AppState()
+        _appState = StateObject(wrappedValue: appState)
         let state = MenuState()
         _menuState = StateObject(wrappedValue: state)
         KeyboardShortcuts.onKeyUp(for: .toggleMenu) {
@@ -16,10 +18,13 @@ struct CCWMenubarApp: App {
                 state.isInserted.toggle()
             }
         }
+        DispatchQueue.main.async {
+            appState.start()
+        }
     }
 
     var body: some Scene {
-        MenuBarExtra("CCW", systemImage: statusImageName, isInserted: $menuState.isInserted) {
+        MenuBarExtra("CCW", systemImage: statusImageName, isInserted: isInsertedBinding) {
             MenuBarView()
                 .environmentObject(appState)
         }
@@ -50,8 +55,23 @@ struct CCWMenubarApp: App {
         }
         return "terminal.fill"
     }
+
+    private var isInsertedBinding: Binding<Bool> {
+        Binding(
+            get: { menuState.isInserted },
+            set: { newValue in
+                if menuState.isInserted != newValue {
+                    menuState.isInserted = newValue
+                }
+            }
+        )
+    }
 }
 
 final class MenuState: ObservableObject {
-    @Published var isInserted = true
+    @Published var isInserted = true {
+        didSet {
+            NSLog("CCWMenubar[ui] menuState isInserted didSet value=\(isInserted)")
+        }
+    }
 }
