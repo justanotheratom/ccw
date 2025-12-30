@@ -3,6 +3,7 @@ import SwiftUI
 
 @MainActor
 public final class AppState: ObservableObject {
+    private let logger = CCWLog.appState
     @Published public var workspaces: [WorkspaceStatus] = []
     @Published public var staleWorkspaces: [WorkspaceStatus] = []
     @Published public var isLoading = false
@@ -23,33 +24,43 @@ public final class AppState: ObservableObject {
     private var cli: CLIBridge?
 
     public init() {
+        logger.info("init start (mainThread=\(Thread.isMainThread, privacy: .public))")
         Task { await initialize() }
     }
 
     private func initialize() async {
         do {
+            logger.info("initialize: creating CLI bridge")
             cli = try CLIBridge()
+            logger.info("initialize: checking dependencies")
             let deps = try await cli!.checkDependencies()
             if deps.contains(where: { !$0.value.installed && $0.value.optional != true }) {
+                logger.warning("initialize: missing required dependencies")
                 setupState = .missingDependencies(deps)
                 return
             }
+            logger.info("initialize: loading config")
             let config = try await cli!.getConfig()
             if !config.onboarded {
                 setupState = .needsOnboarding
             } else {
                 setupState = .ready
+                logger.info("initialize: ready, refreshing workspaces")
                 await refreshWorkspaces()
             }
         } catch CLIBridge.CLIError.ccwNotFound {
+            logger.error("initialize: ccw not found in app bundle")
             setupState = .error("ccw binary not found in app bundle")
         } catch {
+            logger.error("initialize: unexpected error \(error.localizedDescription, privacy: .public)")
             setupState = .needsOnboarding
         }
     }
 
     public func refreshWorkspaces() async {
         guard let cli = cli else { return }
+        let start = Date()
+        logger.info("refreshWorkspaces start (mainThread=\(Thread.isMainThread, privacy: .public))")
         isLoading = true
         defer { isLoading = false }
 
@@ -57,8 +68,12 @@ public final class AppState: ObservableObject {
             workspaces = try await cli.listWorkspaces()
             staleWorkspaces = try await cli.staleWorkspaces()
             error = nil
+            let elapsed = Date().timeIntervalSince(start)
+            logger.info("refreshWorkspaces success count=\(workspaces.count, privacy: .public) stale=\(staleWorkspaces.count, privacy: .public) elapsed=\(elapsed, privacy: .public)s")
         } catch {
             self.error = error
+            let elapsed = Date().timeIntervalSince(start)
+            logger.error("refreshWorkspaces failed elapsed=\(elapsed, privacy: .public)s error=\(error.localizedDescription, privacy: .public)")
         }
     }
 

@@ -1,6 +1,7 @@
 import Foundation
 
 public actor CLIBridge {
+    private let logger = CCWLog.cli
     public enum CLIError: Error, LocalizedError {
         case commandFailed(String)
         case ccwNotFound
@@ -88,6 +89,9 @@ public actor CLIBridge {
     }
 
     private func execute(_ arguments: [String]) async throws -> Data {
+        let start = Date()
+        let argString = arguments.joined(separator: " ")
+        logger.info("execute start args=\(argString, privacy: .public)")
         let process = Process()
         process.executableURL = ccwURL
         process.arguments = arguments
@@ -107,9 +111,14 @@ public actor CLIBridge {
         if process.terminationStatus != 0 {
             let errorData = stderr.fileHandleForReading.readDataToEndOfFile()
             let errorMsg = String(data: errorData, encoding: .utf8) ?? "Unknown error"
+            let elapsed = Date().timeIntervalSince(start)
+            logger.error("execute failed status=\(process.terminationStatus, privacy: .public) elapsed=\(elapsed, privacy: .public)s error=\(errorMsg, privacy: .public)")
             throw CLIError.commandFailed(errorMsg)
         }
 
-        return stdout.fileHandleForReading.readDataToEndOfFile()
+        let output = stdout.fileHandleForReading.readDataToEndOfFile()
+        let elapsed = Date().timeIntervalSince(start)
+        logger.info("execute success elapsed=\(elapsed, privacy: .public)s bytes=\(output.count, privacy: .public)")
+        return output
     }
 }

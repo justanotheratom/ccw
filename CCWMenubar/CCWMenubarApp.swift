@@ -6,6 +6,7 @@ import KeyboardShortcuts
 struct CCWMenubarApp: App {
     @StateObject private var appState = AppState()
     @StateObject private var menuState: MenuState
+    private let logger = CCWLog.ui
 
     init() {
         let state = MenuState()
@@ -24,6 +25,7 @@ struct CCWMenubarApp: App {
         }
         .menuBarExtraStyle(.window)
         .onChange(of: menuState.isInserted) { newValue in
+            logger.info("menu bar extra isInserted=\(newValue, privacy: .public)")
             if newValue {
                 Task { await appState.refreshWorkspaces() }
             }
