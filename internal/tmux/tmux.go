@@ -140,6 +140,7 @@ func (r Runner) AttachSession(name string) error {
 }
 
 func focusExistingMacWindow(session string) error {
+	windowTitle := itermWindowTitle(session)
 	script := fmt.Sprintf(`tell application "iTerm"
   repeat with w in windows
     if name of w contains "%s" then
@@ -148,7 +149,7 @@ func focusExistingMacWindow(session string) error {
       return
     end if
   end repeat
-end tell`, escapeAppleScript(session))
+end tell`, escapeAppleScript(windowTitle))
 	return runOsaScript(script)
 }
 
@@ -216,6 +217,7 @@ func openNewMacTerminalWindow(session string, ccMode bool) error {
 
 	var script string
 	if app == "iTerm" {
+		windowTitle := itermWindowTitle(session)
 		script = fmt.Sprintf(`tell application "iTerm"
   set controlWindow to (create window with default profile command "%s")
   set name of controlWindow to "%s"
@@ -234,14 +236,14 @@ func openNewMacTerminalWindow(session string, ccMode bool) error {
     end if
   end try
   activate
-end tell`, appleCmd, escapeAppleScript(session), useCC)
+end tell`, appleCmd, escapeAppleScript(windowTitle), useCC)
 		if err := runOsaScript(script); err != nil {
 			// Fallback: simpler script without resize/minimize gymnastics.
 			fallback := fmt.Sprintf(`tell application "iTerm"
   create window with default profile command "%s"
   set name of current window to "%s"
   activate
-end tell`, appleCmd, escapeAppleScript(session))
+end tell`, appleCmd, escapeAppleScript(windowTitle))
 			if err2 := runOsaScript(fallback); err2 != nil {
 				return fmt.Errorf("osascript iTerm: %v (fallback: %v)", err, err2)
 			}
@@ -276,6 +278,10 @@ func tmuxAttachCommand(tmuxBin, session string, ccMode bool) string {
 		base = fmt.Sprintf("%s -CC attach -t %s", shellQuote(tmuxBin), session)
 	}
 	return base
+}
+
+func itermWindowTitle(session string) string {
+	return fmt.Sprintf("ccw [%s]", session)
 }
 
 func tmuxBinary() string {
