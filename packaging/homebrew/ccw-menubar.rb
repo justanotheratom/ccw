@@ -8,6 +8,7 @@ cask "ccw-menubar" do
   homepage "https://github.com/justanotheratom/ccw"
 
   app "CCWMenubar.app"
+  binary "#{appdir}/CCWMenubar.app/Contents/MacOS/ccw", target: "ccw"
 
   zap trash: [
     "~/.ccw",
