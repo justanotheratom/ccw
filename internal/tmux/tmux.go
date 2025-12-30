@@ -124,7 +124,8 @@ func (r Runner) AttachSession(name string) error {
 				return nil
 			}
 		}
-		if err := openNewMacTerminalWindow(name, r.PreferCC); err == nil {
+		err := openNewMacTerminalWindow(name, r.PreferCC)
+		if err == nil {
 			return nil
 		}
 		return fmt.Errorf("failed to open macOS terminal window for tmux session %s: %w", name, err)
