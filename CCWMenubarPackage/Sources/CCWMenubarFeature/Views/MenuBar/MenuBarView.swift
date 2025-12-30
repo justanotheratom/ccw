@@ -96,10 +96,17 @@ public struct MenuBarView: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Button("Settings...") {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            if #available(macOS 13.0, *) {
+                SettingsLink {
+                    Text("Settings...")
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            } else {
+                Button("Settings...") {
+                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                }
+                .keyboardShortcut(",", modifiers: .command)
             }
-            .keyboardShortcut(",", modifiers: .command)
 
             Button("Quit") {
                 NSApp.terminate(nil)
