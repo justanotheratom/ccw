@@ -69,7 +69,7 @@ public final class AppState: ObservableObject {
             staleWorkspaces = try await cli.staleWorkspaces()
             error = nil
             let elapsed = Date().timeIntervalSince(start)
-            logger.info("refreshWorkspaces success count=\(workspaces.count, privacy: .public) stale=\(staleWorkspaces.count, privacy: .public) elapsed=\(elapsed, privacy: .public)s")
+            logger.info("refreshWorkspaces success count=\(self.workspaces.count, privacy: .public) stale=\(self.staleWorkspaces.count, privacy: .public) elapsed=\(elapsed, privacy: .public)s")
         } catch {
             self.error = error
             let elapsed = Date().timeIntervalSince(start)
