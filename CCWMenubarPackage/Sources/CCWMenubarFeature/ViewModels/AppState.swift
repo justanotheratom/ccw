@@ -75,6 +75,8 @@ public final class AppState: ObservableObject {
 
         do {
             workspaces = try await cli.listWorkspaces()
+            NSLog("CCWMenubar[app-state] listWorkspaces done count=\(workspaces.count)")
+            NSLog("CCWMenubar[app-state] staleWorkspaces start")
             staleWorkspaces = try await cli.staleWorkspaces()
             error = nil
             let elapsed = Date().timeIntervalSince(start)
