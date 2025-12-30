@@ -94,25 +94,12 @@ public struct MenuBarView: View {
         }
     }
 
-
-    private func openSettingsWindow() {
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.sendAction(#selector(NSApplication.showSettingsWindow(_:)), to: nil, from: nil)
-    }
-
     private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if #available(macOS 14.0, *) {
-                SettingsLink {
-                    Text("Settings...")
-                }
-                .keyboardShortcut(",", modifiers: .command)
-            } else {
-                Button("Settings...") {
-                    openSettingsWindow()
-                }
-                .keyboardShortcut(",", modifiers: .command)
+            Button("Settings...") {
+                appState.openSettingsWindow()
             }
+            .keyboardShortcut(",", modifiers: .command)
 
             Button("Quit") {
                 NSApp.terminate(nil)
