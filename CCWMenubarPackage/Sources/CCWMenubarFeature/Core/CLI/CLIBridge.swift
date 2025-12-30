@@ -24,8 +24,22 @@ public actor CLIBridge {
             throw CLIError.ccwNotFound
         }
         self.ccwURL = url
-        self.decoder = JSONDecoder()
-        self.decoder.dateDecodingStrategy = .iso8601
+        let decoder = JSONDecoder()
+        let fractionalFormatter = ISO8601DateFormatter()
+        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let fallbackFormatter = ISO8601DateFormatter()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let value = try container.decode(String.self)
+            if let date = fractionalFormatter.date(from: value) {
+                return date
+            }
+            if let date = fallbackFormatter.date(from: value) {
+                return date
+            }
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid ISO8601 date: \(value)")
+        }
+        self.decoder = decoder
     }
 
     public func listWorkspaces() async throws -> [WorkspaceStatus] {
