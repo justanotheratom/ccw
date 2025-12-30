@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: macos-14
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -109,7 +111,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: CCWMenubar.dmg
-          generate_release_notes: true
+          generate_release_notes: false
 
       - name: Update Homebrew Tap
         if: env.TAP_PAT != ''
