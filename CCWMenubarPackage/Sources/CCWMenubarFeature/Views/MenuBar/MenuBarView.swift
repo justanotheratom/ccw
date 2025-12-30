@@ -39,10 +39,6 @@ public struct MenuBarView: View {
             Text("CCW Workspaces")
                 .font(.headline)
             Spacer()
-            Button(action: { Task { await appState.refreshWorkspaces() } }) {
-                Image(systemName: "arrow.clockwise")
-            }
-            .disabled(appState.isLoading)
             Button(action: { showingNewWorkspace = true }) {
                 Image(systemName: "plus")
             }
