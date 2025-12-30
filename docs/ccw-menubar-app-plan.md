@@ -360,7 +360,7 @@ func checkSetupStatus() async {
 
 **Build Requirements:**
 - macOS 13.0+ (Ventura)
-- Xcode 15.0+
+- Xcode 16.1+
 - Swift 5.9+
 
 ---
