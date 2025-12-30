@@ -76,8 +76,9 @@ jobs:
       - name: Notarize and Staple (if certificates available)
         if: env.APPLE_CERTIFICATE != ''
         run: |
+          echo "$NOTARYTOOL_KEY" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
           xcrun notarytool submit CCWMenubar.dmg --wait \
-            --key "$NOTARYTOOL_KEY" --key-id "$NOTARYTOOL_KEY_ID" --issuer "$NOTARYTOOL_ISSUER"
+            --key "$RUNNER_TEMP/AuthKey.p8" --key-id "$NOTARYTOOL_KEY_ID" --issuer "$NOTARYTOOL_ISSUER"
           xcrun stapler staple CCWMenubar.dmg
 
       - name: Upload to Release
