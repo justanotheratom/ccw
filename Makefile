@@ -12,3 +12,8 @@ test:
 .PHONY: tidy
 tidy:
 	@go mod tidy
+
+.PHONY: run-menubar
+run-menubar:
+	@go build -o ccw .
+	@open CCWMenubar.xcworkspace
