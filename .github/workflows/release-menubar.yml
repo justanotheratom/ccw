@@ -75,8 +75,37 @@ jobs:
           generate_release_notes: true
 
       - name: Update Homebrew Tap
+        if: env.TAP_GITHUB_TOKEN != ''
         run: |
-          gh workflow run update-tap.yml -f app=menubar
+          VERSION="${GITHUB_REF_NAME#menubar-v}"
+          SHA="$(shasum -a 256 CCWMenubar.dmg | awk '{print $1}')"
+          git clone "https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/justanotheratom/homebrew-ccw.git"
+          cd homebrew-ccw
+          mkdir -p Casks
+          cat > Casks/ccw-menubar.rb <<EOF
+          cask "ccw-menubar" do
+            version "${VERSION}"
+            sha256 "${SHA}"
+
+            url "https://github.com/justanotheratom/ccw/releases/download/menubar-v#{version}/CCWMenubar.dmg"
+            name "CCW Menubar"
+            desc "Menubar app for Claude Code Workspace manager"
+            homepage "https://github.com/justanotheratom/ccw"
+
+            app "CCWMenubar.app"
+
+            zap trash: [
+              "~/.ccw",
+            ]
+          end
+          EOF
+          if git diff --quiet -- Casks/ccw-menubar.rb; then
+            echo "Cask unchanged"
+            exit 0
+          fi
+          git add Casks/ccw-menubar.rb
+          git -c user.name="github-actions[bot]" -c user.email="github-actions[bot]@users.noreply.github.com" commit -m "Update ccw-menubar cask to ${VERSION}"
+          git push
 
 env:
   APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -84,3 +113,4 @@ env:
   NOTARYTOOL_KEY: ${{ secrets.NOTARYTOOL_KEY }}
   NOTARYTOOL_KEY_ID: ${{ secrets.NOTARYTOOL_KEY_ID }}
   NOTARYTOOL_ISSUER: ${{ secrets.NOTARYTOOL_ISSUER }}
+  TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
