@@ -114,9 +114,9 @@ final class LaunchAtLoginModel: ObservableObject {
         NSLog("CCWMenubar[ui] launch-at-login toggle requested=\(newValue)")
         do {
             if newValue {
-                try SMAppService.mainApp.register()
+                try await SMAppService.mainApp.register()
             } else {
-                try SMAppService.mainApp.unregister()
+                try await SMAppService.mainApp.unregister()
             }
             lastError = nil
         } catch {
