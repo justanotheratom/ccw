@@ -27,18 +27,6 @@ jobs:
         with:
           xcode-version: "16.1"
 
-      - name: Build Menubar App
-        run: |
-          xcodebuild -workspace CCWMenubar.xcworkspace \
-            -scheme CCWMenubar \
-            -configuration Release \
-            -archivePath build/CCWMenubar.xcarchive \
-            archive
-          xcodebuild -exportArchive \
-            -archivePath build/CCWMenubar.xcarchive \
-            -exportPath build/export \
-            -exportOptionsPlist ExportOptions.plist
-
       - name: Import signing certificate (if available)
         if: env.APPLE_CERTIFICATE != ''
         run: |
@@ -50,6 +38,42 @@ jobs:
           security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security list-keychains -d user -s "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      - name: Build Menubar App
+        run: |
+          TEAM_ID="$(echo "$DEVELOPER_ID" | sed -n 's/.*(\(.*\))$/\1/p')"
+          if [ -z "$TEAM_ID" ]; then
+            echo "Unable to parse team id from DEVELOPER_ID" >&2
+            exit 1
+          fi
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>developer-id</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>teamID</key>
+            <string>${TEAM_ID}</string>
+            <key>signingCertificate</key>
+            <string>${DEVELOPER_ID}</string>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -workspace CCWMenubar.xcworkspace \
+            -scheme CCWMenubar \
+            -configuration Release \
+            -archivePath build/CCWMenubar.xcarchive \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            CODE_SIGN_IDENTITY="$DEVELOPER_ID" \
+            CODE_SIGN_STYLE=Manual \
+            archive
+          xcodebuild -exportArchive \
+            -archivePath build/CCWMenubar.xcarchive \
+            -exportPath build/export \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
 
       - name: Code Sign (if certificates available)
         if: env.APPLE_CERTIFICATE != ''
