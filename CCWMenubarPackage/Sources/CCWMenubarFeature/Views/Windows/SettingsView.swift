@@ -1,19 +1,17 @@
 import SwiftUI
-import Dispatch
 import KeyboardShortcuts
 import ServiceManagement
 
 public struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
 
+    @StateObject private var launchAtLogin = LaunchAtLoginModel()
     @State private var reposDir = ""
     @State private var layoutLeft = "claude"
     @State private var layoutRight = "lazygit"
     @State private var itermCCMode = false
     @State private var skipPerms = false
     @State private var showingOnboarding = false
-    @State private var launchAtLoginEnabled = (SMAppService.mainApp.status == .enabled)
-    @State private var hasLoadedLaunchAtLogin = false
 
     public init() {}
 
@@ -34,21 +32,10 @@ public struct SettingsView: View {
 
             Toggle("iTerm CC Mode", isOn: $itermCCMode)
             Toggle("Skip permission prompts", isOn: $skipPerms)
-            Toggle("Launch at Login", isOn: $launchAtLoginEnabled)
-                .onChange(of: launchAtLoginEnabled) { newValue in
-                    guard hasLoadedLaunchAtLogin else { return }
-                    do {
-                        if newValue {
-                            try SMAppService.mainApp.register()
-                        } else {
-                            try SMAppService.mainApp.unregister()
-                        }
-                    } catch {
-                        DispatchQueue.main.async {
-                            launchAtLoginEnabled = (SMAppService.mainApp.status == .enabled)
-                        }
-                    }
-                }
+            Toggle("Launch at Login", isOn: Binding(
+                get: { launchAtLogin.isEnabled },
+                set: { launchAtLogin.setEnabled($0) }
+            ))
 
             KeyboardShortcuts.Recorder("Toggle Menu", name: .toggleMenu)
 
@@ -70,8 +57,7 @@ public struct SettingsView: View {
         .frame(width: 520)
         .task {
             await loadConfig()
-            launchAtLoginEnabled = (SMAppService.mainApp.status == .enabled)
-            hasLoadedLaunchAtLogin = true
+            await launchAtLogin.refresh()
         }
         .sheet(isPresented: $showingOnboarding) {
             OnboardingView()
@@ -101,4 +87,43 @@ public struct SettingsView: View {
 
 extension KeyboardShortcuts.Name {
     public static let toggleMenu = Self("toggleMenu")
+}
+
+@MainActor
+final class LaunchAtLoginModel: ObservableObject {
+    @Published var isEnabled = false
+    @Published var lastError: String?
+
+    private let logger = CCWLog.ui
+
+    func refresh() async {
+        await Task.yield()
+        let status = SMAppService.mainApp.status
+        isEnabled = (status == .enabled)
+        logger.notice("launch-at-login refresh status=\(String(describing: status), privacy: .public)")
+        NSLog("CCWMenubar[ui] launch-at-login refresh status=\(status)")
+    }
+
+    func setEnabled(_ newValue: Bool) {
+        Task { await updateEnabled(newValue) }
+    }
+
+    private func updateEnabled(_ newValue: Bool) async {
+        await Task.yield()
+        logger.notice("launch-at-login toggle requested=\(newValue, privacy: .public)")
+        NSLog("CCWMenubar[ui] launch-at-login toggle requested=\(newValue)")
+        do {
+            if newValue {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+            lastError = nil
+        } catch {
+            lastError = error.localizedDescription
+            logger.error("launch-at-login toggle failed error=\(error.localizedDescription, privacy: .public)")
+            NSLog("CCWMenubar[ui] launch-at-login toggle failed error=\(error.localizedDescription)")
+        }
+        await refresh()
+    }
 }
