@@ -9,7 +9,7 @@
 PRODUCT_NAME = CCWMenubar
 PRODUCT_DISPLAY_NAME = CCW Menubar
 PRODUCT_BUNDLE_IDENTIFIER = com.justanotheratom.ccw-menubar
-MARKETING_VERSION = 0.1.53
+MARKETING_VERSION = 0.1.54
 CURRENT_PROJECT_VERSION = 1
 
 // ==========================================

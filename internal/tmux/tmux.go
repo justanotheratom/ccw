@@ -143,11 +143,13 @@ func focusExistingMacWindow(session string) error {
 	windowTitle := itermWindowTitle(session)
 	script := fmt.Sprintf(`tell application "iTerm"
   repeat with w in windows
-    if name of w contains "%s" then
-      set frontmost of w to true
-      activate
-      return
-    end if
+    repeat with s in sessions of w
+      if name of s contains "%s" then
+        set frontmost of w to true
+        activate
+        return
+      end if
+    end repeat
   end repeat
 end tell`, escapeAppleScript(windowTitle))
 	return runOsaScript(script)
@@ -220,7 +222,9 @@ func openNewMacTerminalWindow(session string, ccMode bool) error {
 		windowTitle := itermWindowTitle(session)
 		script = fmt.Sprintf(`tell application "iTerm"
   set controlWindow to (create window with default profile command "%s")
-  set name of controlWindow to "%s"
+  try
+    tell current session of controlWindow to set name to "%s"
+  end try
   try
     tell application "Finder" to set screenBounds to bounds of window of desktop
     if %t then
@@ -241,7 +245,9 @@ end tell`, appleCmd, escapeAppleScript(windowTitle), useCC)
 			// Fallback: simpler script without resize/minimize gymnastics.
 			fallback := fmt.Sprintf(`tell application "iTerm"
   create window with default profile command "%s"
-  set name of current window to "%s"
+  try
+    tell current session of current window to set name to "%s"
+  end try
   activate
 end tell`, appleCmd, escapeAppleScript(windowTitle))
 			if err2 := runOsaScript(fallback); err2 != nil {
