@@ -1,6 +1,6 @@
 import SwiftUI
 import KeyboardShortcuts
-import LaunchAtLogin
+import ServiceManagement
 
 public struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
@@ -11,6 +11,7 @@ public struct SettingsView: View {
     @State private var itermCCMode = false
     @State private var skipPerms = false
     @State private var showingOnboarding = false
+    @State private var launchAtLoginEnabled = (SMAppService.mainApp.status == .enabled)
 
     public init() {}
 
@@ -31,7 +32,18 @@ public struct SettingsView: View {
 
             Toggle("iTerm CC Mode", isOn: $itermCCMode)
             Toggle("Skip permission prompts", isOn: $skipPerms)
-            LaunchAtLogin.Toggle()
+            Toggle("Launch at Login", isOn: $launchAtLoginEnabled)
+                .onChange(of: launchAtLoginEnabled) { newValue in
+                    do {
+                        if newValue {
+                            try SMAppService.mainApp.register()
+                        } else {
+                            try SMAppService.mainApp.unregister()
+                        }
+                    } catch {
+                        launchAtLoginEnabled = (SMAppService.mainApp.status == .enabled)
+                    }
+                }
 
             KeyboardShortcuts.Recorder("Toggle Menu", name: .toggleMenu)
 
@@ -51,7 +63,10 @@ public struct SettingsView: View {
         }
         .padding()
         .frame(width: 520)
-        .task { await loadConfig() }
+        .task {
+            await loadConfig()
+            launchAtLoginEnabled = (SMAppService.mainApp.status == .enabled)
+        }
         .sheet(isPresented: $showingOnboarding) {
             OnboardingView()
                 .environmentObject(appState)

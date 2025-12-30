@@ -78,9 +78,9 @@ jobs:
       - name: Code Sign (if certificates available)
         if: env.APPLE_CERTIFICATE != ''
         run: |
-          codesign --force --sign "$DEVELOPER_ID" \
+          codesign --force --sign "$DEVELOPER_ID" --options runtime --timestamp \
             build/export/CCWMenubar.app/Contents/MacOS/ccw
-          codesign --force --options runtime \
+          codesign --force --options runtime --timestamp \
             --entitlements Config/CCWMenubar.entitlements \
             --sign "$DEVELOPER_ID" \
             build/export/CCWMenubar.app

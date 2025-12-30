@@ -15,7 +15,6 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "1.15.0"),
-        .package(url: "https://github.com/sindresorhus/LaunchAtLogin", from: "5.0.0"),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
@@ -24,7 +23,6 @@ let package = Package(
             name: "CCWMenubarFeature",
             dependencies: [
                 .product(name: "KeyboardShortcuts", package: "KeyboardShortcuts"),
-                .product(name: "LaunchAtLogin", package: "LaunchAtLogin"),
             ]
         ),
         .testTarget(
