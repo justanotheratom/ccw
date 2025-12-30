@@ -50,5 +50,5 @@ struct CCWMenubarApp: App {
 }
 
 final class MenuState: ObservableObject {
-    @Published var isInserted = false
+    @Published var isInserted = true
 }
