@@ -3,7 +3,7 @@ name: Release Menubar App
 on:
   push:
     tags:
-      - "menubar-v*"
+      - "v*"
 
 jobs:
   build:
@@ -88,11 +88,11 @@ jobs:
           generate_release_notes: true
 
       - name: Update Homebrew Tap
-        if: env.TAP_GITHUB_TOKEN != ''
+        if: env.TAP_PAT != ''
         run: |
-          VERSION="${GITHUB_REF_NAME#menubar-v}"
+          VERSION="${GITHUB_REF_NAME#v}"
           SHA="$(shasum -a 256 CCWMenubar.dmg | awk '{print $1}')"
-          git clone "https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/justanotheratom/homebrew-ccw.git"
+          git clone "https://x-access-token:${TAP_PAT}@github.com/justanotheratom/homebrew-ccw.git"
           cd homebrew-ccw
           mkdir -p Casks
           cat > Casks/ccw-menubar.rb <<EOF
@@ -100,7 +100,7 @@ jobs:
             version "${VERSION}"
             sha256 "${SHA}"
 
-            url "https://github.com/justanotheratom/ccw/releases/download/menubar-v#{version}/CCWMenubar.dmg"
+            url "https://github.com/justanotheratom/ccw/releases/download/v#{version}/CCWMenubar.dmg"
             name "CCW Menubar"
             desc "Menubar app for Claude Code Workspace manager"
             homepage "https://github.com/justanotheratom/ccw"
@@ -128,4 +128,4 @@ env:
   NOTARYTOOL_KEY: ${{ secrets.NOTARYTOOL_KEY }}
   NOTARYTOOL_KEY_ID: ${{ secrets.NOTARYTOOL_KEY_ID }}
   NOTARYTOOL_ISSUER: ${{ secrets.NOTARYTOOL_ISSUER }}
-  TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+  TAP_PAT: ${{ secrets.TAP_PAT }}
