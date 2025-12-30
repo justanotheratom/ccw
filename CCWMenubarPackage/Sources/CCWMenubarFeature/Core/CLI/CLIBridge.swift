@@ -59,7 +59,7 @@ public actor CLIBridge {
 
     public func staleWorkspaces() async throws -> [WorkspaceStatus] {
         let output = try await execute(["stale", "--json"])
-        return try decoder.decode([WorkspaceStatus].self, from: output)
+        return try decoder.decode([WorkspaceStatus]?.self, from: output) ?? []
     }
 
     public func workspaceInfo(_ id: String) async throws -> WorkspaceInfo {
@@ -92,6 +92,7 @@ public actor CLIBridge {
         let start = Date()
         let argString = arguments.joined(separator: " ")
         logger.info("execute start args=\(argString, privacy: .public)")
+        NSLog("CCWMenubar[cli] execute start args=\(argString)")
         let process = Process()
         process.executableURL = ccwURL
         process.arguments = arguments
@@ -113,12 +114,14 @@ public actor CLIBridge {
             let errorMsg = String(data: errorData, encoding: .utf8) ?? "Unknown error"
             let elapsed = Date().timeIntervalSince(start)
             logger.error("execute failed status=\(process.terminationStatus, privacy: .public) elapsed=\(elapsed, privacy: .public)s error=\(errorMsg, privacy: .public)")
+            NSLog("CCWMenubar[cli] execute failed status=\(process.terminationStatus) elapsed=\(elapsed)s error=\(errorMsg)")
             throw CLIError.commandFailed(errorMsg)
         }
 
         let output = stdout.fileHandleForReading.readDataToEndOfFile()
         let elapsed = Date().timeIntervalSince(start)
         logger.info("execute success elapsed=\(elapsed, privacy: .public)s bytes=\(output.count, privacy: .public)")
+        NSLog("CCWMenubar[cli] execute success elapsed=\(elapsed)s bytes=\(output.count)")
         return output
     }
 }
