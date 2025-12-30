@@ -48,7 +48,10 @@ public actor CLIBridge {
 
     public func listWorkspaces() async throws -> [WorkspaceStatus] {
         let output = try await execute(["ls", "--json"])
-        return try decoder.decode([WorkspaceStatus].self, from: output)
+        if output.isEmpty {
+            return []
+        }
+        return try decoder.decode([WorkspaceStatus]?.self, from: output) ?? []
     }
 
     public func openWorkspace(_ id: String, resume: Bool = true) async throws {

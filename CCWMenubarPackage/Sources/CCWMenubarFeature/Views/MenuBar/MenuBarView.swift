@@ -18,6 +18,9 @@ public struct MenuBarView: View {
             footer
         }
         .frame(width: 350)
+        .onAppear {
+            Task { await appState.refreshWorkspaces() }
+        }
         .sheet(isPresented: $showingNewWorkspace) {
             NewWorkspaceView()
                 .environmentObject(appState)
@@ -36,6 +39,10 @@ public struct MenuBarView: View {
             Text("CCW Workspaces")
                 .font(.headline)
             Spacer()
+            Button(action: { Task { await appState.refreshWorkspaces() } }) {
+                Image(systemName: "arrow.clockwise")
+            }
+            .disabled(appState.isLoading)
             Button(action: { showingNewWorkspace = true }) {
                 Image(systemName: "plus")
             }
