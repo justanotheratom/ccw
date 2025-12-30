@@ -87,6 +87,15 @@ jobs:
             --sign "$DEVELOPER_ID" \
             build/export/CCWMenubar.app
 
+      - name: Notarize and Staple (app, if certificates available)
+        if: env.APPLE_CERTIFICATE != ''
+        run: |
+          echo "$NOTARYTOOL_KEY" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          ditto -c -k --keepParent build/export/CCWMenubar.app "$RUNNER_TEMP/CCWMenubar.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/CCWMenubar.zip" --wait \
+            --key "$RUNNER_TEMP/AuthKey.p8" --key-id "$NOTARYTOOL_KEY_ID" --issuer "$NOTARYTOOL_ISSUER"
+          xcrun stapler staple build/export/CCWMenubar.app
+
       - name: Create DMG
         run: |
           brew install create-dmg
@@ -99,14 +108,10 @@ jobs:
             CCWMenubar.dmg \
             build/export/CCWMenubar.app
 
-      - name: Notarize and Staple (if certificates available)
+      - name: Notarize and Staple (dmg, if certificates available)
         if: env.APPLE_CERTIFICATE != ''
         run: |
           echo "$NOTARYTOOL_KEY" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
-          ditto -c -k --keepParent build/export/CCWMenubar.app "$RUNNER_TEMP/CCWMenubar.zip"
-          xcrun notarytool submit "$RUNNER_TEMP/CCWMenubar.zip" --wait \
-            --key "$RUNNER_TEMP/AuthKey.p8" --key-id "$NOTARYTOOL_KEY_ID" --issuer "$NOTARYTOOL_ISSUER"
-          xcrun stapler staple build/export/CCWMenubar.app
           xcrun notarytool submit CCWMenubar.dmg --wait \
             --key "$RUNNER_TEMP/AuthKey.p8" --key-id "$NOTARYTOOL_KEY_ID" --issuer "$NOTARYTOOL_ISSUER"
           xcrun stapler staple CCWMenubar.dmg
