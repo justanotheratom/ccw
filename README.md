@@ -35,6 +35,20 @@ CCWMenubar/
 ### App Sandbox
 The menubar app runs without App Sandbox and uses the hardened runtime for distribution. Apple Events automation is enabled for iTerm control in `Config/CCWMenubar.entitlements`.
 
+## Prerequisites
+
+- **Xcode 16+** - For building the menubar app
+- **Go 1.21+** - For building the CLI (`ccw`)
+- **iTerm2** (optional) - For terminal integration; falls back to Terminal.app if not installed
+
+## How It Works
+
+The CCW system has two components:
+1. **CLI (`ccw`)** - Go binary that manages workspaces, git worktrees, and tmux sessions
+2. **Menubar App** - SwiftUI app that provides a GUI and calls the CLI
+
+The menubar app communicates with the CLI via subprocess execution. During development, use `CCW_BIN_PATH` to point to your local CLI build.
+
 ## Development Notes
 
 ### Code Organization
@@ -64,11 +78,29 @@ DERIVED_DATA=/tmp/ccw-menubar-derived scripts/dev-menubar.sh --release
 scripts/dev-menubar.sh --release --no-cli
 ```
 
-Log inspection without the script:
+### Logging
+
+The app uses structured log prefixes for easy filtering:
+
+| Prefix | Component |
+|--------|-----------|
+| `CCWMenubar[ui]` | UI lifecycle events |
+| `CCWMenubar[app-state]` | AppState changes, workspace operations |
+| `CCWMenubar[cli]` | CLI command execution |
+| `CCWMenubar[delegate]` | App delegate lifecycle |
+| `CCWMenubar[exit]` | Termination and keep-alive events |
+
+Stream all logs:
 ```bash
 /usr/bin/log stream --style compact \
   --predicate 'process == "CCWMenubar" || subsystem == "com.justanotheratom.ccw-menubar"' \
   --info --level info
+```
+
+Filter by component (grep stderr since NSLog goes there):
+```bash
+scripts/dev-menubar.sh 2>&1 | grep "CCWMenubar\[cli\]"
+scripts/dev-menubar.sh 2>&1 | grep "CCWMenubar\[app-state\]"
 ```
 
 ### Public API Requirements
@@ -156,6 +188,60 @@ To include assets in your feature package:
     resources: [.process("Resources")]
 )
 ```
+
+## Troubleshooting
+
+### Menubar icon not appearing
+The app may have crashed or failed to initialize. Check for zombie processes:
+```bash
+pgrep -fl CCWMenubar
+```
+
+Kill all instances and restart:
+```bash
+pkill -9 -f CCWMenubar
+scripts/dev-menubar.sh
+```
+
+### CLI commands failing
+Verify the CLI is accessible and working:
+```bash
+# Check if ccw is in PATH
+which ccw
+
+# Or use the local build
+./bin/ccw version
+./bin/ccw check --json
+```
+
+### Clean build
+If you encounter strange build issues:
+```bash
+# Clean Xcode derived data
+rm -rf .build/DerivedData
+
+# Clean SPM build artifacts
+rm -rf CCWMenubarPackage/.build
+
+# Full rebuild
+scripts/dev-menubar.sh
+```
+
+### Multiple instances running
+The dev script should kill existing instances, but if you have duplicates:
+```bash
+pkill -9 -f CCWMenubar
+```
+
+### Workspace operations not working
+Check the CLI logs for errors:
+```bash
+scripts/dev-menubar.sh 2>&1 | grep -E "CCWMenubar\[(cli|app-state)\]"
+```
+
+Common issues:
+- **"workspace not found"** - Workspace ID format is `repo/branch` (e.g., `myapp/feature-x`)
+- **iTerm not opening** - Ensure iTerm2 is installed, or the app will fall back to Terminal.app
 
 ## Notes
 
