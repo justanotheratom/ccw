@@ -150,7 +150,7 @@ The app uses Apple Events automation to focus iTerm windows. Update `Config/CCWM
 
 ### Homebrew Cask
 ```bash
-brew install --cask justanotheratom/tap/ccw-menubar
+brew install --cask justanotheratom/ccw/ccw-menubar
 ```
 
 The Homebrew tap is maintained at: https://github.com/justanotheratom/homebrew-ccw
