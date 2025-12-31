@@ -68,11 +68,18 @@ func initRepoForManager(t *testing.T) (string, string) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
+
+	// Create a bare repo to act as origin
+	bareDir := filepath.Join(root, "origin.git")
+	runGitCmd(t, root, "init", "--bare", "origin.git")
+
 	runGitCmd(t, dir, "init")
 	runGitCmd(t, dir, "checkout", "-b", "main")
 	runGitCmd(t, dir, "config", "user.email", "test@example.com")
 	runGitCmd(t, dir, "config", "user.name", "Test User")
+	runGitCmd(t, dir, "remote", "add", "origin", bareDir)
 	runGitCmd(t, dir, "commit", "--allow-empty", "-m", "init")
+	runGitCmd(t, dir, "push", "-u", "origin", "main")
 	return root, repoName
 }
 
@@ -255,7 +262,9 @@ func TestStaleWorkspacesDetectsMerged(t *testing.T) {
 	}
 	runGitCmd(t, worktreePath, "add", ".")
 	runGitCmd(t, worktreePath, "commit", "-m", "feature work")
+	runGitCmd(t, worktreePath, "push", "origin", "feature/test")
 	runGitCmd(t, repoPath, "merge", "--no-ff", "feature/test")
+	runGitCmd(t, repoPath, "push", "origin", "main")
 
 	stale, err := mgr.StaleWorkspaces(context.Background(), false)
 	if err != nil {
