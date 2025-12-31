@@ -191,6 +191,41 @@ To include assets in your feature package:
 )
 ```
 
+## Releasing a New Version
+
+### Step 1: Bump Version Numbers
+Update version in two places:
+
+```bash
+# CLI version (cmd/root.go)
+version = "X.Y.Z"
+
+# Menubar app version (Config/Shared.xcconfig)
+MARKETING_VERSION = X.Y.Z
+```
+
+### Step 2: Commit and Tag
+```bash
+git add cmd/root.go Config/Shared.xcconfig
+git commit -m "Bump version to X.Y.Z"
+git push
+
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```
+
+### Step 3: Automated Release
+Pushing the tag triggers GitHub Actions:
+- **release.yml** - Builds CLI binaries (darwin/linux, amd64/arm64), creates GitHub Release
+- **release-menubar.yml** - Builds macOS app, signs/notarizes, creates DMG, uploads to release, updates Homebrew tap
+
+### Step 4: Verify
+```bash
+gh release view vX.Y.Z
+```
+
+The Homebrew tap at https://github.com/justanotheratom/homebrew-ccw is automatically updated.
+
 ## Troubleshooting
 
 ### Menubar icon not appearing
