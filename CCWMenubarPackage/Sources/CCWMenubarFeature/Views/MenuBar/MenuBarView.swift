@@ -8,8 +8,6 @@ public struct MenuBarView: View {
     @EnvironmentObject private var appState: AppState
     @State private var showingNewWorkspace = false
     @State private var showingOnboarding = false
-    @State private var confirmQuit = false
-
     public init() {}
 
     public var body: some View {
@@ -21,13 +19,6 @@ public struct MenuBarView: View {
 
             Divider()
             footer
-        }
-        .alert("Quit CCW Menubar?", isPresented: $confirmQuit) {
-            Button("Quit", role: .destructive) {
-                NSLog("CCWMenubar[ui] quit confirmed")
-                NSApp.terminate(nil)
-            }
-            Button("Cancel", role: .cancel) {}
         }
         .frame(width: 350)
         .onAppear {
@@ -124,7 +115,7 @@ public struct MenuBarView: View {
 
             Button("Quit") {
                 NSLog("CCWMenubar[ui] quit tapped")
-                confirmQuit = true
+                NSApp.terminate(nil)
             }
             .keyboardShortcut("q", modifiers: .command)
         }

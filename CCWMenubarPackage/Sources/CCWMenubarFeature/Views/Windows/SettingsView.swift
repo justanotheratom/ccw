@@ -87,6 +87,7 @@ public struct SettingsView: View {
         }
         .onAppear {
             NSLog("CCWMenubar[ui] settings version=\(versionString)")
+            NSApp.activate(ignoringOtherApps: true)
         }
         .sheet(isPresented: $showingOnboarding) {
             OnboardingView()
