@@ -153,6 +153,8 @@ The app uses Apple Events automation to focus iTerm windows. Update `Config/CCWM
 brew install --cask justanotheratom/tap/ccw-menubar
 ```
 
+The Homebrew tap is maintained at: https://github.com/justanotheratom/homebrew-ccw
+
 ### Direct Download
 Download the latest DMG from GitHub Releases and drag `CCWMenubar.app` to `/Applications`.
 
