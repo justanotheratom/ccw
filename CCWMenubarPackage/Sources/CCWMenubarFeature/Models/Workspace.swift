@@ -1,6 +1,6 @@
 import Foundation
 
-public struct Workspace: Codable, Sendable {
+public struct Workspace: Codable, Sendable, Hashable {
     public let repo: String
     public let repoPath: String
     public let branch: String
@@ -24,7 +24,7 @@ public struct Workspace: Codable, Sendable {
     }
 }
 
-public struct WorkspaceStatus: Codable, Identifiable, Sendable {
+public struct WorkspaceStatus: Codable, Identifiable, Sendable, Hashable {
     public let id: String
     public let workspace: Workspace
     public let sessionAlive: Bool

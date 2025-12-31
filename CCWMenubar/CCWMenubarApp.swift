@@ -30,7 +30,7 @@ struct CCWMenubarApp: App {
             MenuBarView()
                 .environmentObject(appState)
         }
-        .menuBarExtraStyle(.menu)
+        .menuBarExtraStyle(.window)
         .onChange(of: menuState.isInserted) { newValue in
             logger.info("menu bar extra isInserted=\(newValue, privacy: .public)")
             NSLog("CCWMenubar[ui] menu bar extra isInserted=\(newValue)")
@@ -38,12 +38,6 @@ struct CCWMenubarApp: App {
                 Task { await appState.refreshWorkspaces() }
             }
         }
-
-        Settings {
-            SettingsView()
-                .environmentObject(appState)
-        }
-
     }
 
     private var statusImageName: String {

@@ -4,7 +4,7 @@ import ServiceManagement
 
 public struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
-    @Environment(\.dismiss) private var dismiss
+    @Binding var navigationPath: NavigationPath
 
     @StateObject private var launchAtLogin = LaunchAtLoginModel()
     @State private var reposDir = ""
@@ -12,9 +12,10 @@ public struct SettingsView: View {
     @State private var layoutRight = "lazygit"
     @State private var itermCCMode = false
     @State private var skipPerms = false
-    @State private var showingOnboarding = false
 
-    public init() {}
+    public init(navigationPath: Binding<NavigationPath>) {
+        self._navigationPath = navigationPath
+    }
 
     private var versionString: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
@@ -23,75 +24,123 @@ public struct SettingsView: View {
     }
 
     public var body: some View {
-        VStack(spacing: 0) {
-            Form {
-                HStack {
-                    Text("Repos Directory")
-                    TextField("", text: $reposDir)
-                }
-
-                VStack(alignment: .leading) {
-                    Text("Layout")
-                    HStack {
-                        TextField("Left", text: $layoutLeft)
-                        TextField("Right", text: $layoutRight)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                // Repositories Section
+                SettingsSection(title: "REPOSITORIES") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Directory")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.secondary)
+                        TextField("~/github", text: $reposDir)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 13))
                     }
                 }
 
-                Toggle("iTerm CC Mode", isOn: $itermCCMode)
-                Toggle("Skip permission prompts", isOn: $skipPerms)
-                Toggle("Launch at Login", isOn: Binding(
-                    get: { launchAtLogin.isEnabled },
-                    set: { launchAtLogin.setEnabled($0) }
-                ))
+                // Layout Section
+                SettingsSection(title: "LAYOUT") {
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Left Pane")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.secondary)
+                            TextField("claude", text: $layoutLeft)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(size: 13, design: .monospaced))
+                        }
 
-                KeyboardShortcuts.Recorder("Toggle Menu", name: .toggleMenu)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Right Pane")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.secondary)
+                            TextField("lazygit", text: $layoutRight)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(size: 13, design: .monospaced))
+                        }
+                    }
+                }
 
-                HStack {
+                // Behavior Section
+                SettingsSection(title: "BEHAVIOR") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Toggle("iTerm CC Mode", isOn: $itermCCMode)
+                            .font(.system(size: 13))
+
+                        Toggle("Skip Permission Prompts", isOn: $skipPerms)
+                            .font(.system(size: 13))
+
+                        Toggle("Launch at Login", isOn: Binding(
+                            get: { launchAtLogin.isEnabled },
+                            set: { launchAtLogin.setEnabled($0) }
+                        ))
+                        .font(.system(size: 13))
+                    }
+                }
+
+                // Keyboard Section
+                SettingsSection(title: "KEYBOARD") {
+                    HStack {
+                        Text("Toggle Menu")
+                            .font(.system(size: 13))
+                        Spacer()
+                        KeyboardShortcuts.Recorder("", name: .toggleMenu)
+                    }
+                }
+
+                // Actions Section
+                SettingsSection(title: "ACTIONS") {
                     Button("Re-run Setup") {
                         Task {
                             await appState.setConfig(key: "onboarded", value: "false")
                             appState.setupState = .needsOnboarding
-                            showingOnboarding = true
+                            navigationPath.removeLast()
                         }
                     }
+                    .font(.system(size: 13))
+                }
+            }
+            .padding(16)
+        }
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 0) {
+                Divider()
+                    .opacity(0.3)
+
+                HStack {
+                    Text(versionString)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+
                     Spacer()
+
+                    Button("Cancel") {
+                        navigationPath.removeLast()
+                    }
+                    .keyboardShortcut(.cancelAction)
+
                     Button("Save") {
                         Task {
                             await saveConfig()
-                            await MainActor.run {
-                                dismiss()
-                            }
+                            navigationPath.removeLast()
                         }
                     }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
                 }
+                .padding(16)
             }
-            .padding()
-            .frame(maxHeight: .infinity, alignment: .top)
-
-            Divider()
-
-            HStack {
-                Spacer()
-                Text(versionString)
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-            }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 10)
+            .background(.ultraThinMaterial)
         }
-        .frame(minWidth: 520, minHeight: 380)
+        .frame(width: 320)
+        .background(.ultraThinMaterial)
+        .navigationTitle("Settings")
         .task {
             await loadConfig()
             await launchAtLogin.refresh()
         }
         .onAppear {
             NSLog("CCWMenubar[ui] settings version=\(versionString)")
-            NSApp.activate(ignoringOtherApps: true)
-        }
-        .sheet(isPresented: $showingOnboarding) {
-            OnboardingView()
-                .environmentObject(appState)
         }
     }
 
@@ -115,9 +164,31 @@ public struct SettingsView: View {
     }
 }
 
+// MARK: - Settings Section Component
+
+private struct SettingsSection<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .tracking(0.5)
+
+            content
+        }
+    }
+}
+
+// MARK: - Keyboard Shortcuts Extension
+
 extension KeyboardShortcuts.Name {
     public static let toggleMenu = Self("toggleMenu")
 }
+
+// MARK: - Launch at Login Model
 
 @MainActor
 final class LaunchAtLoginModel: ObservableObject {
