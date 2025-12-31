@@ -54,10 +54,16 @@ public actor CLIBridge {
         return try decoder.decode([WorkspaceStatus]?.self, from: output) ?? []
     }
 
-    public func openWorkspace(_ id: String, resume: Bool = true) async throws {
+    public func openWorkspace(_ id: String, resume: Bool = true, focusExisting: Bool = true, forceAttach: Bool = true) async throws {
         var args = ["open", id]
         if !resume {
             args.append("--no-resume")
+        }
+        if focusExisting {
+            args.append("--focus")
+        }
+        if forceAttach {
+            args.append("--attach")
         }
         _ = try await execute(args)
     }

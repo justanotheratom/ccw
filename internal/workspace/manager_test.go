@@ -171,7 +171,7 @@ func TestOpenWorkspaceCreatesSessionWhenMissing(t *testing.T) {
 
 	delete(tmuxStub.sessions, ws.TmuxSession)
 
-	if err := mgr.OpenWorkspace(context.Background(), WorkspaceID(repoName, "feature/test"), true); err != nil {
+	if err := mgr.OpenWorkspace(context.Background(), WorkspaceID(repoName, "feature/test"), OpenOptions{ResumeClaude: true, FocusExisting: true}); err != nil {
 		t.Fatalf("OpenWorkspace: %v", err)
 	}
 

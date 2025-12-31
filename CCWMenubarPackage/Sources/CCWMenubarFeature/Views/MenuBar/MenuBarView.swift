@@ -1,9 +1,14 @@
 import SwiftUI
 
+private enum AutoTerminationGuard {
+    static var disabled = false
+}
+
 public struct MenuBarView: View {
     @EnvironmentObject private var appState: AppState
     @State private var showingNewWorkspace = false
     @State private var showingOnboarding = false
+    @State private var confirmQuit = false
 
     public init() {}
 
@@ -17,9 +22,25 @@ public struct MenuBarView: View {
             Divider()
             footer
         }
+        .alert("Quit CCW Menubar?", isPresented: $confirmQuit) {
+            Button("Quit", role: .destructive) {
+                NSLog("CCWMenubar[ui] quit confirmed")
+                NSApp.terminate(nil)
+            }
+            Button("Cancel", role: .cancel) {}
+        }
         .frame(width: 350)
         .onAppear {
+            if !AutoTerminationGuard.disabled {
+                AutoTerminationGuard.disabled = true
+                ProcessInfo.processInfo.disableAutomaticTermination("Keep CCW Menubar alive")
+                NSLog("CCWMenubar[exit] automatic termination disabled (menu bar view)")
+            }
+            NSLog("CCWMenubar[ui] menu bar view onAppear")
             Task { await appState.refreshWorkspaces() }
+        }
+        .onDisappear {
+            NSLog("CCWMenubar[ui] menu bar view onDisappear")
         }
         .sheet(isPresented: $showingNewWorkspace) {
             NewWorkspaceView()
@@ -96,13 +117,14 @@ public struct MenuBarView: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Button("Settings...") {
-                appState.openSettingsWindow()
+            SettingsLink {
+                Text("Settings...")
             }
             .keyboardShortcut(",", modifiers: .command)
 
             Button("Quit") {
-                NSApp.terminate(nil)
+                NSLog("CCWMenubar[ui] quit tapped")
+                confirmQuit = true
             }
             .keyboardShortcut("q", modifiers: .command)
         }

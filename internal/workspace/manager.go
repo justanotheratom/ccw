@@ -29,6 +29,14 @@ type TmuxRunner interface {
 	SendKeys(target string, keys []string, enter bool) error
 }
 
+var ErrWorkspaceAlreadyOpen = errors.New("workspace already open")
+
+type OpenOptions struct {
+	ResumeClaude  bool
+	FocusExisting bool
+	ForceAttach   bool
+}
+
 type Manager struct {
 	root     string
 	cfg      config.Config
@@ -260,7 +268,7 @@ func (m *Manager) bootstrapSession(ctx context.Context, name, path string, resum
 	return nil
 }
 
-func (m *Manager) OpenWorkspace(ctx context.Context, id string, resumeClaude bool) error {
+func (m *Manager) OpenWorkspace(ctx context.Context, id string, opts OpenOptions) error {
 	if err := m.checkDepsByName("git", "tmux", "claude"); err != nil {
 		return err
 	}
@@ -276,8 +284,15 @@ func (m *Manager) OpenWorkspace(ctx context.Context, id string, resumeClaude boo
 	}
 
 	if !sessionExists {
-		if err := m.bootstrapSession(ctx, ws.TmuxSession, ws.WorktreePath, resumeClaude); err != nil {
+		if err := m.bootstrapSession(ctx, ws.TmuxSession, ws.WorktreePath, opts.ResumeClaude); err != nil {
 			return err
+		}
+	}
+
+	if sessionExists {
+		hasClients, _ := m.tmux.HasAttachedClients(ws.TmuxSession)
+		if hasClients && !opts.FocusExisting {
+			return ErrWorkspaceAlreadyOpen
 		}
 	}
 
@@ -285,7 +300,7 @@ func (m *Manager) OpenWorkspace(ctx context.Context, id string, resumeClaude boo
 		return err
 	}
 
-	if term.IsTerminal(int(os.Stdout.Fd())) {
+	if opts.ForceAttach || term.IsTerminal(int(os.Stdout.Fd())) {
 		return m.tmux.AttachSession(ws.TmuxSession)
 	}
 	return nil

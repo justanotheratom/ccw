@@ -4,6 +4,7 @@ import ServiceManagement
 
 public struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
 
     @StateObject private var launchAtLogin = LaunchAtLoginModel()
     @State private var reposDir = ""
@@ -15,49 +16,77 @@ public struct SettingsView: View {
 
     public init() {}
 
+    private var versionString: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
+        return "Version \(version) (\(build))"
+    }
+
     public var body: some View {
-        Form {
-            HStack {
-                Text("Repos Directory")
-                TextField("", text: $reposDir)
-            }
-
-            VStack(alignment: .leading) {
-                Text("Layout")
+        VStack(spacing: 0) {
+            Form {
                 HStack {
-                    TextField("Left", text: $layoutLeft)
-                    TextField("Right", text: $layoutRight)
+                    Text("Repos Directory")
+                    TextField("", text: $reposDir)
                 }
-            }
 
-            Toggle("iTerm CC Mode", isOn: $itermCCMode)
-            Toggle("Skip permission prompts", isOn: $skipPerms)
-            Toggle("Launch at Login", isOn: Binding(
-                get: { launchAtLogin.isEnabled },
-                set: { launchAtLogin.setEnabled($0) }
-            ))
-
-            KeyboardShortcuts.Recorder("Toggle Menu", name: .toggleMenu)
-
-            HStack {
-                Button("Re-run Setup") {
-                    Task {
-                        await appState.setConfig(key: "onboarded", value: "false")
-                        appState.setupState = .needsOnboarding
-                        showingOnboarding = true
+                VStack(alignment: .leading) {
+                    Text("Layout")
+                    HStack {
+                        TextField("Left", text: $layoutLeft)
+                        TextField("Right", text: $layoutRight)
                     }
                 }
-                Spacer()
-                Button("Save") {
-                    Task { await saveConfig() }
+
+                Toggle("iTerm CC Mode", isOn: $itermCCMode)
+                Toggle("Skip permission prompts", isOn: $skipPerms)
+                Toggle("Launch at Login", isOn: Binding(
+                    get: { launchAtLogin.isEnabled },
+                    set: { launchAtLogin.setEnabled($0) }
+                ))
+
+                KeyboardShortcuts.Recorder("Toggle Menu", name: .toggleMenu)
+
+                HStack {
+                    Button("Re-run Setup") {
+                        Task {
+                            await appState.setConfig(key: "onboarded", value: "false")
+                            appState.setupState = .needsOnboarding
+                            showingOnboarding = true
+                        }
+                    }
+                    Spacer()
+                    Button("Save") {
+                        Task {
+                            await saveConfig()
+                            await MainActor.run {
+                                dismiss()
+                            }
+                        }
+                    }
                 }
             }
+            .padding()
+            .frame(maxHeight: .infinity, alignment: .top)
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Text(versionString)
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 10)
         }
-        .padding()
-        .frame(width: 520)
+        .frame(minWidth: 520, minHeight: 380)
         .task {
             await loadConfig()
             await launchAtLogin.refresh()
+        }
+        .onAppear {
+            NSLog("CCWMenubar[ui] settings version=\(versionString)")
         }
         .sheet(isPresented: $showingOnboarding) {
             OnboardingView()

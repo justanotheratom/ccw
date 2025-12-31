@@ -16,7 +16,7 @@ func TestE2ECreateOpenRemove(t *testing.T) {
 		t.Fatalf("CreateWorkspace: %v", err)
 	}
 
-	if err := mgr.OpenWorkspace(context.Background(), id, true); err != nil {
+	if err := mgr.OpenWorkspace(context.Background(), id, OpenOptions{ResumeClaude: true, FocusExisting: true}); err != nil {
 		t.Fatalf("OpenWorkspace: %v", err)
 	}
 

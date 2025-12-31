@@ -31,7 +31,6 @@ public final class AppState: ObservableObject {
     }
 
     private var cli: CLIBridge?
-    private var settingsWindow: NSWindow?
     private var didStart = false
 
     public init() {
@@ -85,25 +84,6 @@ public final class AppState: ObservableObject {
         }
     }
 
-
-    public func openSettingsWindow() {
-        if let window = settingsWindow {
-            NSApp.activate(ignoringOtherApps: true)
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
-        let host = NSHostingController(rootView: SettingsView().environmentObject(self))
-        let window = NSWindow(contentViewController: host)
-        window.title = "Settings"
-        window.styleMask = [.titled, .closable, .miniaturizable]
-        window.setContentSize(NSSize(width: 480, height: 360))
-        window.center()
-        window.isReleasedWhenClosed = false
-        settingsWindow = window
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
-    }
-
     public func refreshWorkspaces() async {
         await Task.yield()
         guard let cli = cli else { return }
@@ -131,12 +111,17 @@ public final class AppState: ObservableObject {
         }
     }
 
-
     public func openWorkspace(_ id: String, resume: Bool = true) async {
         guard let cli = cli else { return }
+        logger.info("openWorkspace start id=\(id, privacy: .public) resume=\(resume, privacy: .public)")
+        NSLog("CCWMenubar[app-state] openWorkspace start id=\(id) resume=\(resume)")
         do {
-            try await cli.openWorkspace(id, resume: resume)
+            try await cli.openWorkspace(id, resume: resume, focusExisting: true, forceAttach: true)
+            logger.info("openWorkspace success id=\(id, privacy: .public)")
+            NSLog("CCWMenubar[app-state] openWorkspace success id=\(id)")
         } catch {
+            logger.error("openWorkspace failed id=\(id, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            NSLog("CCWMenubar[app-state] openWorkspace failed id=\(id) error=\(error.localizedDescription)")
             self.error = error
         }
     }

@@ -119,6 +119,7 @@ func (r Runner) KillSession(name string) error {
 
 func (r Runner) AttachSession(name string) error {
 	if runtime.GOOS == "darwin" {
+		r.ensureSessionTitle(name)
 		if hasClients, _ := r.HasAttachedClients(name); hasClients {
 			if err := focusExistingMacWindow(name); err == nil {
 				return nil
@@ -138,18 +139,21 @@ func (r Runner) AttachSession(name string) error {
 	_, err := r.run(context.Background(), "attach", "-t", name)
 	return err
 }
+func (r Runner) ensureSessionTitle(session string) {
+	title := itermWindowTitle(session)
+	_, _ = r.run(context.Background(), "set-option", "-t", session, "set-titles", "on")
+	_, _ = r.run(context.Background(), "set-option", "-t", session, "set-titles-string", title)
+}
 
 func focusExistingMacWindow(session string) error {
 	windowTitle := itermWindowTitle(session)
 	script := fmt.Sprintf(`tell application "iTerm"
   repeat with w in windows
-    repeat with s in sessions of w
-      if name of s contains "%s" then
-        set frontmost of w to true
-        activate
-        return
-      end if
-    end repeat
+    if name of w contains "%s" then
+      set frontmost of w to true
+      activate
+      return
+    end if
   end repeat
 end tell`, escapeAppleScript(windowTitle))
 	return runOsaScript(script)
@@ -219,12 +223,9 @@ func openNewMacTerminalWindow(session string, ccMode bool) error {
 
 	var script string
 	if app == "iTerm" {
-		windowTitle := itermWindowTitle(session)
 		script = fmt.Sprintf(`tell application "iTerm"
-  set controlWindow to (create window with default profile command "%s")
-  try
-    tell current session of controlWindow to set name to "%s"
-  end try
+  set controlWindow to (create window with default profile)
+  tell current session of controlWindow to write text "%s"
   try
     tell application "Finder" to set screenBounds to bounds of window of desktop
     if %t then
@@ -234,22 +235,19 @@ func openNewMacTerminalWindow(session string, ccMode bool) error {
           set bounds of w to screenBounds
         end if
       end repeat
-      set miniaturized of controlWindow to true
     else
       set bounds of controlWindow to screenBounds
     end if
   end try
   activate
-end tell`, appleCmd, escapeAppleScript(windowTitle), useCC)
+end tell`, appleCmd, useCC)
 		if err := runOsaScript(script); err != nil {
 			// Fallback: simpler script without resize/minimize gymnastics.
 			fallback := fmt.Sprintf(`tell application "iTerm"
-  create window with default profile command "%s"
-  try
-    tell current session of current window to set name to "%s"
-  end try
+  set controlWindow to (create window with default profile)
+  tell current session of controlWindow to write text "%s"
   activate
-end tell`, appleCmd, escapeAppleScript(windowTitle))
+end tell`, appleCmd)
 			if err2 := runOsaScript(fallback); err2 != nil {
 				return fmt.Errorf("osascript iTerm: %v (fallback: %v)", err, err2)
 			}
@@ -279,9 +277,10 @@ func pickMacTerminalApp() string {
 }
 
 func tmuxAttachCommand(tmuxBin, session string, ccMode bool) string {
-	base := fmt.Sprintf("%s attach -t %s", shellQuote(tmuxBin), session)
+	quotedSession := shellQuote(session)
+	base := fmt.Sprintf("%s attach -t %s", shellQuote(tmuxBin), quotedSession)
 	if ccMode {
-		base = fmt.Sprintf("%s -CC attach -t %s", shellQuote(tmuxBin), session)
+		base = fmt.Sprintf("%s -CC attach -t %s || %s attach -t %s", shellQuote(tmuxBin), quotedSession, shellQuote(tmuxBin), quotedSession)
 	}
 	return base
 }

@@ -40,6 +40,37 @@ The menubar app runs without App Sandbox and uses the hardened runtime for distr
 ### Code Organization
 Most development happens in `CCWMenubarPackage/Sources/CCWMenubarFeature/` - organize your code as you prefer.
 
+### Local Testing
+Use the helper script to build and relaunch the menubar app locally:
+```bash
+scripts/dev-menubar.sh --release
+```
+
+Useful options and environment variables:
+```bash
+# Build debug configuration
+scripts/dev-menubar.sh
+
+# Skip Xcode build (relaunch only)
+scripts/dev-menubar.sh --no-build
+
+# Stream app logs after launch
+scripts/dev-menubar.sh --release --logs
+
+# Override build output location
+DERIVED_DATA=/tmp/ccw-menubar-derived scripts/dev-menubar.sh --release
+
+# Skip rebuilding the CLI binary
+scripts/dev-menubar.sh --release --no-cli
+```
+
+Log inspection without the script:
+```bash
+/usr/bin/log stream --style compact \
+  --predicate 'process == "CCWMenubar" || subsystem == "com.justanotheratom.ccw-menubar"' \
+  --info --level info
+```
+
 ### Public API Requirements
 Types exposed to the app target need `public` access:
 ```swift
