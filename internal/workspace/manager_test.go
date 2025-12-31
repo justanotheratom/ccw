@@ -56,6 +56,10 @@ func (s *stubTmux) SendKeys(target string, keys []string, enter bool) error {
 	return nil
 }
 
+func (s *stubTmux) HasAttachedClients(session string) (bool, error) {
+	return false, nil
+}
+
 func initRepoForManager(t *testing.T) (string, string) {
 	t.Helper()
 	root := t.TempDir()
