@@ -76,6 +76,17 @@ func (r Runner) SessionExists(name string) (bool, error) {
 	return false, err
 }
 
+func (r Runner) HasAttachedClients(session string) (bool, error) {
+	out, err := r.run(context.Background(), "list-clients", "-t", session)
+	if err != nil {
+		if code, ok := exitCode(err); ok && code == 1 {
+			return false, nil
+		}
+		return false, err
+	}
+	return strings.TrimSpace(out) != "", nil
+}
+
 func (r Runner) CreateSession(name, path string, detached bool) error {
 	if exists, err := r.SessionExists(name); err != nil {
 		return err
@@ -108,11 +119,17 @@ func (r Runner) KillSession(name string) error {
 
 func (r Runner) AttachSession(name string) error {
 	if runtime.GOOS == "darwin" {
-		if err := openNewMacTerminalWindow(name, r.PreferCC); err == nil {
-			return nil
-		} else {
-			return fmt.Errorf("failed to open macOS terminal window for tmux session %s: %w", name, err)
+		r.ensureSessionTitle(name)
+		if hasClients, _ := r.HasAttachedClients(name); hasClients {
+			if err := focusExistingMacWindow(name); err == nil {
+				return nil
+			}
 		}
+		err := openNewMacTerminalWindow(name, r.PreferCC)
+		if err == nil {
+			return nil
+		}
+		return fmt.Errorf("failed to open macOS terminal window for tmux session %s: %w", name, err)
 	}
 
 	if os.Getenv("TMUX") != "" {
@@ -121,6 +138,25 @@ func (r Runner) AttachSession(name string) error {
 
 	_, err := r.run(context.Background(), "attach", "-t", name)
 	return err
+}
+func (r Runner) ensureSessionTitle(session string) {
+	title := itermWindowTitle(session)
+	_, _ = r.run(context.Background(), "set-option", "-t", session, "set-titles", "on")
+	_, _ = r.run(context.Background(), "set-option", "-t", session, "set-titles-string", title)
+}
+
+func focusExistingMacWindow(session string) error {
+	windowTitle := itermWindowTitle(session)
+	script := fmt.Sprintf(`tell application "iTerm"
+  repeat with w in windows
+    if name of w contains "%s" then
+      set frontmost of w to true
+      activate
+      return
+    end if
+  end repeat
+end tell`, escapeAppleScript(windowTitle))
+	return runOsaScript(script)
 }
 
 func (r Runner) SplitPane(session string, horizontal bool, path string) error {
@@ -188,7 +224,8 @@ func openNewMacTerminalWindow(session string, ccMode bool) error {
 	var script string
 	if app == "iTerm" {
 		script = fmt.Sprintf(`tell application "iTerm"
-  set controlWindow to (create window with default profile command "%s")
+  set controlWindow to (create window with default profile)
+  tell current session of controlWindow to write text "%s"
   try
     tell application "Finder" to set screenBounds to bounds of window of desktop
     if %t then
@@ -198,7 +235,6 @@ func openNewMacTerminalWindow(session string, ccMode bool) error {
           set bounds of w to screenBounds
         end if
       end repeat
-      set miniaturized of controlWindow to true
     else
       set bounds of controlWindow to screenBounds
     end if
@@ -208,7 +244,8 @@ end tell`, appleCmd, useCC)
 		if err := runOsaScript(script); err != nil {
 			// Fallback: simpler script without resize/minimize gymnastics.
 			fallback := fmt.Sprintf(`tell application "iTerm"
-  create window with default profile command "%s"
+  set controlWindow to (create window with default profile)
+  tell current session of controlWindow to write text "%s"
   activate
 end tell`, appleCmd)
 			if err2 := runOsaScript(fallback); err2 != nil {
@@ -240,11 +277,16 @@ func pickMacTerminalApp() string {
 }
 
 func tmuxAttachCommand(tmuxBin, session string, ccMode bool) string {
-	base := fmt.Sprintf("%s attach -t %s", shellQuote(tmuxBin), session)
+	quotedSession := shellQuote(session)
+	base := fmt.Sprintf("%s attach -t %s", shellQuote(tmuxBin), quotedSession)
 	if ccMode {
-		base = fmt.Sprintf("%s -CC attach -t %s", shellQuote(tmuxBin), session)
+		base = fmt.Sprintf("%s -CC attach -t %s || %s attach -t %s", shellQuote(tmuxBin), quotedSession, shellQuote(tmuxBin), quotedSession)
 	}
 	return base
+}
+
+func itermWindowTitle(session string) string {
+	return fmt.Sprintf("ccw [%s]", session)
 }
 
 func tmuxBinary() string {

@@ -21,11 +21,20 @@ import (
 
 type TmuxRunner interface {
 	SessionExists(name string) (bool, error)
+	HasAttachedClients(session string) (bool, error)
 	CreateSession(name, path string, detached bool) error
 	KillSession(name string) error
 	AttachSession(name string) error
 	SplitPane(session string, horizontal bool, path string) error
 	SendKeys(target string, keys []string, enter bool) error
+}
+
+var ErrWorkspaceAlreadyOpen = errors.New("workspace already open")
+
+type OpenOptions struct {
+	ResumeClaude  bool
+	FocusExisting bool
+	ForceAttach   bool
 }
 
 type Manager struct {
@@ -58,6 +67,7 @@ type WorkspaceStatus struct {
 	ID           string
 	Workspace    Workspace
 	SessionAlive bool
+	HasClients   bool
 }
 
 func NewManager(root string, tmuxRunner TmuxRunner) (*Manager, error) {
@@ -189,6 +199,12 @@ func (m *Manager) CreateWorkspace(ctx context.Context, repo, branch string, opts
 	}
 	rb.Add(func() { _ = git.DeleteBranch(repoPath, branch, true) })
 
+	if err := git.PushBranch(repoPath, branch); err != nil {
+		rb.Run()
+		return Workspace{}, err
+	}
+	rb.Add(func() { _ = git.DeleteRemoteBranch(repoPath, "origin", branch) })
+
 	if err := git.CreateWorktree(repoPath, worktreePath, branch); err != nil {
 		rb.Run()
 		return Workspace{}, err
@@ -252,7 +268,7 @@ func (m *Manager) bootstrapSession(ctx context.Context, name, path string, resum
 	return nil
 }
 
-func (m *Manager) OpenWorkspace(ctx context.Context, id string, resumeClaude bool) error {
+func (m *Manager) OpenWorkspace(ctx context.Context, id string, opts OpenOptions) error {
 	if err := m.checkDepsByName("git", "tmux", "claude"); err != nil {
 		return err
 	}
@@ -268,8 +284,15 @@ func (m *Manager) OpenWorkspace(ctx context.Context, id string, resumeClaude boo
 	}
 
 	if !sessionExists {
-		if err := m.bootstrapSession(ctx, ws.TmuxSession, ws.WorktreePath, resumeClaude); err != nil {
+		if err := m.bootstrapSession(ctx, ws.TmuxSession, ws.WorktreePath, opts.ResumeClaude); err != nil {
 			return err
+		}
+	}
+
+	if sessionExists {
+		hasClients, _ := m.tmux.HasAttachedClients(ws.TmuxSession)
+		if hasClients && !opts.FocusExisting {
+			return ErrWorkspaceAlreadyOpen
 		}
 	}
 
@@ -277,7 +300,7 @@ func (m *Manager) OpenWorkspace(ctx context.Context, id string, resumeClaude boo
 		return err
 	}
 
-	if term.IsTerminal(int(os.Stdout.Fd())) {
+	if opts.ForceAttach || term.IsTerminal(int(os.Stdout.Fd())) {
 		return m.tmux.AttachSession(ws.TmuxSession)
 	}
 	return nil
@@ -315,10 +338,15 @@ func (m *Manager) ListWorkspaces(ctx context.Context) ([]WorkspaceStatus, error)
 		if err != nil {
 			alive = false
 		}
+		hasClients := false
+		if alive {
+			hasClients, _ = m.tmux.HasAttachedClients(ws.TmuxSession)
+		}
 		statuses = append(statuses, WorkspaceStatus{
 			ID:           id,
 			Workspace:    ws,
 			SessionAlive: alive,
+			HasClients:   hasClients,
 		})
 	}
 
@@ -437,11 +465,16 @@ func (m *Manager) WorkspaceInfo(ctx context.Context, query string) (WorkspaceSta
 	if err != nil {
 		alive = false
 	}
+	hasClients := false
+	if alive {
+		hasClients, _ = m.tmux.HasAttachedClients(ws.TmuxSession)
+	}
 
 	return WorkspaceStatus{
 		ID:           id,
 		Workspace:    ws,
 		SessionAlive: alive,
+		HasClients:   hasClients,
 	}, nil
 }
 
@@ -469,10 +502,15 @@ func (m *Manager) StaleWorkspaces(ctx context.Context, force bool) ([]WorkspaceS
 			if err != nil {
 				alive = false
 			}
+			hasClients := false
+			if alive {
+				hasClients, _ = m.tmux.HasAttachedClients(ws.TmuxSession)
+			}
 			results = append(results, WorkspaceStatus{
 				ID:           id,
 				Workspace:    ws,
 				SessionAlive: alive,
+				HasClients:   hasClients,
 			})
 		}
 	}

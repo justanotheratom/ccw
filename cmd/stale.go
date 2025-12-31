@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+
 	"github.com/ccw/ccw/internal/workspace"
 	"github.com/spf13/cobra"
 )
@@ -14,6 +16,7 @@ var staleCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		remove, _ := cmd.Flags().GetBool("rm")
 		force, _ := cmd.Flags().GetBool("force")
+		showJSON, _ := cmd.Flags().GetBool("json")
 
 		mgr, err := newManager()
 		if err != nil {
@@ -23,6 +26,12 @@ var staleCmd = &cobra.Command{
 		stale, err := mgr.StaleWorkspaces(cmd.Context(), force)
 		if err != nil {
 			return err
+		}
+
+		if showJSON {
+			enc := json.NewEncoder(cmd.OutOrStdout())
+			enc.SetIndent("", "  ")
+			return enc.Encode(stale)
 		}
 
 		if !remove {
@@ -55,6 +64,7 @@ var staleCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(staleCmd)
+	staleCmd.Flags().Bool("json", false, "Output as JSON")
 	staleCmd.Flags().Bool("rm", false, "Remove all stale workspaces (interactive)")
 	staleCmd.Flags().Bool("force", false, "Force removal without confirmation")
 }

@@ -122,6 +122,23 @@ func CreateBranch(repoPath, branch, baseBranch string, fetch bool) error {
 	return nil
 }
 
+func PushBranch(repoPath, branch string) error {
+	if _, err := runGit(context.Background(), repoPath, "remote", "get-url", "origin"); err != nil {
+		return fmt.Errorf("origin remote not found: %w", err)
+	}
+	if _, err := runGit(context.Background(), repoPath, "push", "-u", "origin", branch); err != nil {
+		return err
+	}
+	return nil
+}
+
+func DeleteRemoteBranch(repoPath, remote, branch string) error {
+	if _, err := runGit(context.Background(), repoPath, "push", remote, "--delete", branch); err != nil {
+		return err
+	}
+	return nil
+}
+
 func DeleteBranch(repoPath, branch string, force bool) error {
 	args := []string{"branch"}
 	if force {

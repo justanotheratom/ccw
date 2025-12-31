@@ -2,7 +2,9 @@ package deps
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 )
 
 type Dependency struct {
@@ -31,6 +33,11 @@ func DefaultDependencies() []Dependency {
 			InstallHint: "Install with `brew install tmux` or your package manager.",
 		},
 		{
+			Name:        "iterm",
+			DisplayName: "iTerm2",
+			InstallHint: "Install iTerm2: https://iterm2.com",
+		},
+		{
 			Name:        "claude",
 			DisplayName: "Claude Code CLI",
 			InstallHint: "Install Claude Code CLI: https://claude.com/claude-code",
@@ -45,11 +52,33 @@ func DefaultDependencies() []Dependency {
 }
 
 func Check(dep Dependency) Result {
+	if dep.Name == "iterm" {
+		if path := findITermApp(); path != "" {
+			return Result{Dependency: dep, Found: true, Path: path}
+		}
+		return Result{Dependency: dep, Found: false}
+	}
 	path, err := exec.LookPath(dep.Name)
 	if err != nil {
 		return Result{Dependency: dep, Found: false}
 	}
 	return Result{Dependency: dep, Found: true, Path: path}
+}
+
+func findITermApp() string {
+	home, _ := os.UserHomeDir()
+	candidates := []string{
+		"/Applications/iTerm.app",
+		"/Applications/iTerm2.app",
+		filepath.Join(home, "Applications", "iTerm.app"),
+		filepath.Join(home, "Applications", "iTerm2.app"),
+	}
+	for _, path := range candidates {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	return ""
 }
 
 func CheckAll(deps []Dependency) []Result {
