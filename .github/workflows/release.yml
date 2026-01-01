@@ -77,6 +77,10 @@ jobs:
             -exportPath build/export \
             -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
 
+      - name: Embed CLI in App Bundle
+        run: |
+          cp ccw build/export/CCW.app/Contents/MacOS/ccw
+
       - name: Code Sign (if certificates available)
         if: env.APPLE_CERTIFICATE != ''
         run: |
