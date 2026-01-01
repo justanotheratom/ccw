@@ -471,6 +471,9 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, id string, opts RemoveOpt
 		errs = append(errs, fmt.Errorf("kill session: %w", err))
 	}
 
+	// Close the iTerm control window if it exists (best-effort, no error on failure)
+	tmux.CloseITermControlWindow(ws.TmuxSession)
+
 	if len(errs) > 0 {
 		return combineErrors(errs)
 	}

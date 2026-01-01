@@ -159,6 +159,59 @@ end tell`, escapeAppleScript(windowTitle))
 	return runOsaScript(script)
 }
 
+// CloseITermControlWindow closes the iTerm control window for the given session.
+// This is used during workspace removal to clean up the tmux -CC control window.
+// No-op on non-macOS platforms or if the window doesn't exist.
+func CloseITermControlWindow(session string) {
+	if runtime.GOOS != "darwin" {
+		return
+	}
+
+	// Read the stored window ID
+	windowID, err := readControlWindowID(session)
+	if err != nil {
+		return
+	}
+
+	script := fmt.Sprintf(`tell application "iTerm"
+  repeat with w in windows
+    if id of w is %s then
+      close w
+      return
+    end if
+  end repeat
+end tell`, windowID)
+	_ = runOsaScript(script)
+
+	// Clean up the stored window ID file
+	_ = removeControlWindowID(session)
+}
+
+func controlWindowIDPath(session string) string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".ccw", "control-windows", session)
+}
+
+func saveControlWindowID(session, windowID string) error {
+	path := controlWindowIDPath(session)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(windowID), 0644)
+}
+
+func readControlWindowID(session string) (string, error) {
+	data, err := os.ReadFile(controlWindowIDPath(session))
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
+func removeControlWindowID(session string) error {
+	return os.Remove(controlWindowIDPath(session))
+}
+
 func (r Runner) SplitPane(session string, horizontal bool, path string) error {
 	target := normalizeTarget(session)
 	args := []string{"split-window", "-t", target}
@@ -223,34 +276,50 @@ func openNewMacTerminalWindow(session string, ccMode bool) error {
 
 	var script string
 	if app == "iTerm" {
+		// Script returns the window ID so we can close it later
 		script = fmt.Sprintf(`tell application "iTerm"
   set controlWindow to (create window with default profile)
+  set windowID to id of controlWindow
   tell current session of controlWindow to write text "%s"
   try
     tell application "Finder" to set screenBounds to bounds of window of desktop
     if %t then
-      delay 0.2
+      delay 0.3
       repeat with w in windows
-        if miniaturized of w is false then
+        if miniaturized of w is false and w is not controlWindow then
           set bounds of w to screenBounds
         end if
       end repeat
+      set miniaturized of controlWindow to true
     else
       set bounds of controlWindow to screenBounds
     end if
   end try
   activate
+  return windowID
 end tell`, appleCmd, useCC)
-		if err := runOsaScript(script); err != nil {
+		windowID, err := runOsaScriptOutput(script)
+		if err != nil {
 			// Fallback: simpler script without resize/minimize gymnastics.
 			fallback := fmt.Sprintf(`tell application "iTerm"
   set controlWindow to (create window with default profile)
+  set windowID to id of controlWindow
   tell current session of controlWindow to write text "%s"
+  if %t then
+    delay 0.5
+    set miniaturized of controlWindow to true
+  end if
   activate
-end tell`, appleCmd)
-			if err2 := runOsaScript(fallback); err2 != nil {
-				return fmt.Errorf("osascript iTerm: %v (fallback: %v)", err, err2)
+  return windowID
+end tell`, appleCmd, useCC)
+			windowID, err = runOsaScriptOutput(fallback)
+			if err != nil {
+				return fmt.Errorf("osascript iTerm: %v (fallback: %v)", err, err)
 			}
+		}
+		// Save the window ID for cleanup during ccw rm
+		if useCC && windowID != "" {
+			_ = saveControlWindowID(session, windowID)
 		}
 		return nil
 	} else {
@@ -314,6 +383,17 @@ func runOsaScript(script string) error {
 		return fmt.Errorf("%w (stderr: %s)", err, strings.TrimSpace(stderr.String()))
 	}
 	return nil
+}
+
+func runOsaScriptOutput(script string) (string, error) {
+	cmd := exec.Command("osascript", "-e", script)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("%w (stderr: %s)", err, strings.TrimSpace(stderr.String()))
+	}
+	return strings.TrimSpace(stdout.String()), nil
 }
 
 func escapeAppleScript(s string) string {
