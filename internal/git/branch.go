@@ -245,6 +245,27 @@ func RemoteBranchHasUnmergedCommits(repoPath, branch, baseBranch string) (bool, 
 	return true, nil
 }
 
+// GetDiffFiles returns the list of files that differ between a branch and base.
+// Returns nil if there are no differences.
+func GetDiffFiles(repoPath, branch, baseBranch string) ([]string, error) {
+	baseRef, err := resolveBaseRef(repoPath, baseBranch)
+	if err != nil {
+		return nil, err
+	}
+
+	out, err := runGit(context.Background(), repoPath, "diff", "--name-only", branch, baseRef)
+	if err != nil {
+		return nil, err
+	}
+
+	trimmed := strings.TrimSpace(out)
+	if trimmed == "" {
+		return nil, nil
+	}
+
+	return strings.Split(trimmed, "\n"), nil
+}
+
 func TouchBranch(repoPath, branch string) error {
 	_, err := runGit(context.Background(), repoPath, "update-ref", "--no-deref", "--create-reflog", "refs/heads/"+branch, "HEAD")
 	return err

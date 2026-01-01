@@ -61,6 +61,10 @@ type RemoveOptions struct {
 	Force        bool
 	KeepBranch   bool
 	KeepWorktree bool
+	// ConfirmFunc is called when there are unmerged changes. It receives the
+	// warning message and list of files that differ. Returns true to proceed
+	// with deletion, false to abort. If nil, removal is aborted on conflicts.
+	ConfirmFunc func(message string, files []string) bool
 }
 
 type WorkspaceStatus struct {
@@ -367,23 +371,11 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, id string, opts RemoveOpt
 		return err
 	}
 
-	var errs []error
-
-	if err := m.tmux.KillSession(ws.TmuxSession); err != nil && !errors.Is(err, tmux.ErrSessionMissing) {
-		errs = append(errs, fmt.Errorf("kill session: %w", err))
-	}
-
-	if !opts.KeepWorktree {
-		if err := git.RemoveWorktree(ws.RepoPath, ws.WorktreePath, true); err != nil {
-			errs = append(errs, fmt.Errorf("remove worktree: %w", err))
-		}
-	}
-
-	if !opts.KeepBranch {
-		// Check if local branch exists before running safety checks
+	// Run all safety checks BEFORE any destructive actions
+	if !opts.KeepBranch && !opts.Force {
 		branchExists, _ := git.BranchExists(ws.RepoPath, ws.Branch)
 
-		if branchExists && !opts.Force {
+		if branchExists {
 			// Resolve base branch for error messages
 			baseBranch := ws.BaseBranch
 			if baseBranch == "" {
@@ -392,30 +384,66 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, id string, opts RemoveOpt
 				}
 			}
 
-			merged, err := git.IsMerged(ws.RepoPath, ws.Branch, ws.BaseBranch, true)
+			// Fetch before checking merge status
+			if err := git.Fetch(ws.RepoPath, true); err != nil {
+				return err
+			}
+
+			merged, err := git.IsMerged(ws.RepoPath, ws.Branch, ws.BaseBranch, false)
 			if err != nil {
 				return err
 			}
 			if !merged {
-				return fmt.Errorf("branch %q is not merged into %q.\nUse --force to delete anyway, or --keep-branch to only remove the workspace.", ws.Branch, baseBranch)
+				files, _ := git.GetDiffFiles(ws.RepoPath, ws.Branch, ws.BaseBranch)
+				msg := fmt.Sprintf("Branch %q has changes not in %q", ws.Branch, baseBranch)
+				if opts.ConfirmFunc != nil && opts.ConfirmFunc(msg, files) {
+					opts.Force = true
+				} else if opts.ConfirmFunc == nil {
+					return fmt.Errorf("branch %q is not merged into %q.\nUse --force to delete anyway, or --keep-branch to only remove the workspace.", ws.Branch, baseBranch)
+				} else {
+					return fmt.Errorf("aborted")
+				}
 			}
 
-			unpushed, err := git.HasUnpushedCommits(ws.RepoPath, ws.Branch)
-			if err != nil {
-				return err
-			}
-			if unpushed {
-				return fmt.Errorf("branch %q has unpushed commits. Push or use --force/--keep-branch.", ws.Branch)
-			}
+			if !opts.Force {
+				unpushed, err := git.HasUnpushedCommits(ws.RepoPath, ws.Branch)
+				if err != nil {
+					return err
+				}
+				if unpushed {
+					return fmt.Errorf("branch %q has unpushed commits. Push or use --force/--keep-branch.", ws.Branch)
+				}
 
-			remoteUnmerged, err := git.RemoteBranchHasUnmergedCommits(ws.RepoPath, ws.Branch, ws.BaseBranch)
-			if err != nil {
-				return err
-			}
-			if remoteUnmerged {
-				return fmt.Errorf("remote branch %q has commits not merged into %q.\nUse --force to delete anyway, or --keep-branch to only remove the workspace.", "origin/"+ws.Branch, baseBranch)
+				remoteUnmerged, err := git.RemoteBranchHasUnmergedCommits(ws.RepoPath, ws.Branch, ws.BaseBranch)
+				if err != nil {
+					return err
+				}
+				if remoteUnmerged {
+					files, _ := git.GetDiffFiles(ws.RepoPath, "origin/"+ws.Branch, ws.BaseBranch)
+					msg := fmt.Sprintf("Remote branch %q has changes not in %q", "origin/"+ws.Branch, baseBranch)
+					if opts.ConfirmFunc != nil && opts.ConfirmFunc(msg, files) {
+						opts.Force = true
+					} else if opts.ConfirmFunc == nil {
+						return fmt.Errorf("remote branch %q has commits not merged into %q.\nUse --force to delete anyway, or --keep-branch to only remove the workspace.", "origin/"+ws.Branch, baseBranch)
+					} else {
+						return fmt.Errorf("aborted")
+					}
+				}
 			}
 		}
+	}
+
+	// Now perform destructive actions
+	var errs []error
+
+	if !opts.KeepWorktree {
+		if err := git.RemoveWorktree(ws.RepoPath, ws.WorktreePath, true); err != nil {
+			errs = append(errs, fmt.Errorf("remove worktree: %w", err))
+		}
+	}
+
+	if !opts.KeepBranch {
+		branchExists, _ := git.BranchExists(ws.RepoPath, ws.Branch)
 
 		if branchExists {
 			if err := git.DeleteBranch(ws.RepoPath, ws.Branch, opts.Force); err != nil && !errors.Is(err, git.ErrBranchNotFound) {
@@ -436,6 +464,11 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, id string, opts RemoveOpt
 		return nil
 	}); err != nil {
 		errs = append(errs, fmt.Errorf("update registry: %w", err))
+	}
+
+	// Kill tmux session LAST since ccw rm might be called from within the workspace
+	if err := m.tmux.KillSession(ws.TmuxSession); err != nil && !errors.Is(err, tmux.ErrSessionMissing) {
+		errs = append(errs, fmt.Errorf("kill session: %w", err))
 	}
 
 	if len(errs) > 0 {
