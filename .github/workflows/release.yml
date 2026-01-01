@@ -79,13 +79,14 @@ jobs:
 
       - name: Embed CLI in App Bundle
         run: |
-          cp ccw build/export/CCW.app/Contents/MacOS/ccw
+          mkdir -p build/export/CCW.app/Contents/Resources
+          cp ccw build/export/CCW.app/Contents/Resources/ccw
 
       - name: Code Sign (if certificates available)
         if: env.APPLE_CERTIFICATE != ''
         run: |
           codesign --force --sign "$DEVELOPER_ID" --options runtime --timestamp \
-            build/export/CCW.app/Contents/MacOS/ccw
+            build/export/CCW.app/Contents/Resources/ccw
           codesign --force --options runtime --timestamp \
             --entitlements Config/CCWMenubar.entitlements \
             --sign "$DEVELOPER_ID" \
@@ -147,7 +148,7 @@ jobs:
             depends_on macos: ">= :sonoma"
 
             app "CCW.app"
-            binary "#{appdir}/CCW.app/Contents/MacOS/ccw", target: "ccw"
+            binary "#{appdir}/CCW.app/Contents/Resources/ccw", target: "ccw"
 
             zap trash: [
               "~/.ccw",

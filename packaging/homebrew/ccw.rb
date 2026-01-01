@@ -10,7 +10,7 @@ cask "ccw" do
   depends_on macos: ">= :sonoma"
 
   app "CCW.app"
-  binary "#{appdir}/CCW.app/Contents/MacOS/ccw", target: "ccw"
+  binary "#{appdir}/CCW.app/Contents/Resources/ccw", target: "ccw"
 
   zap trash: [
     "~/.ccw",

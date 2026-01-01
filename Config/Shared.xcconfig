@@ -9,7 +9,7 @@
 PRODUCT_NAME = CCW
 PRODUCT_DISPLAY_NAME = CCW
 PRODUCT_BUNDLE_IDENTIFIER = com.justanotheratom.ccw
-MARKETING_VERSION = 0.1.65
+MARKETING_VERSION = 0.1.66
 CURRENT_PROJECT_VERSION = 1
 
 // ==========================================
