@@ -9,7 +9,8 @@
 PRODUCT_NAME = CCW
 PRODUCT_DISPLAY_NAME = CCW
 PRODUCT_BUNDLE_IDENTIFIER = com.justanotheratom.ccw
-MARKETING_VERSION = 0.1.68
+// Version is injected from git tag at release time via MARKETING_VERSION= in xcodebuild
+MARKETING_VERSION = 0.0.0-dev
 CURRENT_PROJECT_VERSION = 1
 
 // ==========================================

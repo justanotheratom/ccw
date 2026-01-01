@@ -88,37 +88,26 @@ log stream --style compact \
 
 ## Releasing a New Version
 
-### Step 1: Bump Version Numbers
-Update version in two places:
+### Step 1: Tag and Push
 ```bash
-# CLI version (cmd/root.go)
-version = "X.Y.Z"
-
-# App version (Config/Shared.xcconfig)
-MARKETING_VERSION = X.Y.Z
-```
-
-### Step 2: Commit and Tag
-```bash
-git add cmd/root.go Config/Shared.xcconfig
-git commit -m "Bump version to X.Y.Z"
-git push
-
 git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-### Step 3: Automated Release
+No manual version bumps needed - the version is automatically derived from the git tag and injected at build time into both the CLI and macOS app.
+
+### Step 2: Automated Release
 Pushing the tag triggers GitHub Actions which:
-- Builds the macOS app (universal binary)
+- Builds the macOS app (universal binary) with version from tag
 - Signs and notarizes with Apple
 - Creates DMG and uploads to GitHub Release
 - Updates the Homebrew tap
 
-### Step 4: Verify
+### Step 3: Verify
 ```bash
 gh release view vX.Y.Z
 brew update && brew upgrade ccw
+ccw version  # Should show X.Y.Z
 ```
 
 ## Troubleshooting

@@ -20,8 +20,10 @@ jobs:
 
       - name: Build ccw CLI (universal binary)
         run: |
-          GOOS=darwin GOARCH=arm64 go build -o ccw-arm64 .
-          GOOS=darwin GOARCH=amd64 go build -o ccw-amd64 .
+          VERSION="${GITHUB_REF_NAME#v}"
+          LDFLAGS="-X github.com/ccw/ccw/cmd.version=${VERSION}"
+          GOOS=darwin GOARCH=arm64 go build -ldflags "$LDFLAGS" -o ccw-arm64 .
+          GOOS=darwin GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ccw-amd64 .
           lipo -create -output ccw ccw-arm64 ccw-amd64
 
       - name: Set up Xcode
@@ -43,6 +45,7 @@ jobs:
 
       - name: Build CCW App
         run: |
+          VERSION="${GITHUB_REF_NAME#v}"
           TEAM_ID="$(echo "$DEVELOPER_ID" | sed -n 's/.*(\(.*\))$/\1/p')"
           if [ -z "$TEAM_ID" ]; then
             echo "Unable to parse team id from DEVELOPER_ID" >&2
@@ -71,6 +74,7 @@ jobs:
             DEVELOPMENT_TEAM="$TEAM_ID" \
             CODE_SIGN_IDENTITY="$DEVELOPER_ID" \
             CODE_SIGN_STYLE=Manual \
+            MARKETING_VERSION="$VERSION" \
             archive
           xcodebuild -exportArchive \
             -archivePath build/CCW.xcarchive \

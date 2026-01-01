@@ -10,7 +10,8 @@ import (
 )
 
 var (
-	version = "0.1.71"
+	// version is set via -ldflags "-X github.com/ccw/ccw/cmd.version=X.Y.Z"
+	version = "dev"
 
 	// Commands exempt from onboarding requirement
 	onboardingExemptCmds = map[string]bool{
