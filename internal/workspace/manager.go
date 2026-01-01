@@ -380,7 +380,10 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, id string, opts RemoveOpt
 	}
 
 	if !opts.KeepBranch {
-		if !opts.Force {
+		// Check if local branch exists before running safety checks
+		branchExists, _ := git.BranchExists(ws.RepoPath, ws.Branch)
+
+		if branchExists && !opts.Force {
 			merged, err := git.IsMerged(ws.RepoPath, ws.Branch, ws.BaseBranch, true)
 			if err != nil {
 				return err
@@ -406,8 +409,10 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, id string, opts RemoveOpt
 			}
 		}
 
-		if err := git.DeleteBranch(ws.RepoPath, ws.Branch, opts.Force); err != nil {
-			errs = append(errs, fmt.Errorf("delete branch: %w", err))
+		if branchExists {
+			if err := git.DeleteBranch(ws.RepoPath, ws.Branch, opts.Force); err != nil && !errors.Is(err, git.ErrBranchNotFound) {
+				errs = append(errs, fmt.Errorf("delete branch: %w", err))
+			}
 		}
 
 		// Delete remote branch if it exists

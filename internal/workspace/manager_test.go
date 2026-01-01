@@ -516,3 +516,41 @@ func TestRemoveWorkspace_KeepBranchSkipsRemote(t *testing.T) {
 		t.Fatal("expected remote branch to still exist with KeepBranch=true")
 	}
 }
+
+func TestRemoveWorkspace_MissingBranchStillCleansUp(t *testing.T) {
+	reposRoot, repoName := initRepoForManager(t)
+	tmuxStub := newStubTmux()
+	mgr := newManagerForTest(t, reposRoot, tmuxStub)
+
+	ws, err := mgr.CreateWorkspace(context.Background(), repoName, "feature/test", CreateOptions{NoFetch: true, NoAttach: true})
+	if err != nil {
+		t.Fatalf("CreateWorkspace: %v", err)
+	}
+
+	repoPath := filepath.Join(reposRoot, repoName)
+
+	// Remove worktree first, then delete branch to simulate a bad state
+	// (workspace registered but branch manually deleted)
+	runGitCmd(t, repoPath, "worktree", "remove", "--force", ws.WorktreePath)
+	runGitCmd(t, repoPath, "branch", "-D", "feature/test")
+
+	// Verify branch is gone
+	exists, _ := git.BranchExists(repoPath, "feature/test")
+	if exists {
+		t.Fatal("expected branch to be deleted for test setup")
+	}
+
+	// Remove should still succeed and clean up registry
+	if err := mgr.RemoveWorkspace(context.Background(), WorkspaceID(repoName, "feature/test"), RemoveOptions{}); err != nil {
+		t.Fatalf("RemoveWorkspace should succeed even with missing branch: %v", err)
+	}
+
+	// Registry should be cleaned up
+	reg, err := mgr.regStore.Read(context.Background())
+	if err != nil {
+		t.Fatalf("read registry: %v", err)
+	}
+	if _, ok := reg.Workspaces[WorkspaceID(repoName, "feature/test")]; ok {
+		t.Fatal("expected registry entry to be removed")
+	}
+}
