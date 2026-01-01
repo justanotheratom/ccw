@@ -384,12 +384,20 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, id string, opts RemoveOpt
 		branchExists, _ := git.BranchExists(ws.RepoPath, ws.Branch)
 
 		if branchExists && !opts.Force {
+			// Resolve base branch for error messages
+			baseBranch := ws.BaseBranch
+			if baseBranch == "" {
+				if detected, err := git.DetectDefaultBranch(ws.RepoPath); err == nil {
+					baseBranch = detected
+				}
+			}
+
 			merged, err := git.IsMerged(ws.RepoPath, ws.Branch, ws.BaseBranch, true)
 			if err != nil {
 				return err
 			}
 			if !merged {
-				return fmt.Errorf("branch %q is not merged into %q.\nUse --force to delete anyway, or --keep-branch to only remove the workspace.", ws.Branch, ws.BaseBranch)
+				return fmt.Errorf("branch %q is not merged into %q.\nUse --force to delete anyway, or --keep-branch to only remove the workspace.", ws.Branch, baseBranch)
 			}
 
 			unpushed, err := git.HasUnpushedCommits(ws.RepoPath, ws.Branch)
@@ -405,7 +413,7 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, id string, opts RemoveOpt
 				return err
 			}
 			if remoteUnmerged {
-				return fmt.Errorf("remote branch %q has commits not merged into %q.\nUse --force to delete anyway, or --keep-branch to only remove the workspace.", "origin/"+ws.Branch, ws.BaseBranch)
+				return fmt.Errorf("remote branch %q has commits not merged into %q.\nUse --force to delete anyway, or --keep-branch to only remove the workspace.", "origin/"+ws.Branch, baseBranch)
 			}
 		}
 

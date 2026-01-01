@@ -149,7 +149,14 @@ func TestIsBranchMergedFalse(t *testing.T) {
 	if _, err := runGit(context.Background(), repo, "checkout", "feature/test"); err != nil {
 		t.Fatalf("checkout: %v", err)
 	}
-	if _, err := runGit(context.Background(), repo, "commit", "--allow-empty", "-m", "feature change"); err != nil {
+	// Add an actual file change (not empty commit) to test unmerged detection
+	if err := os.WriteFile(filepath.Join(repo, "feature.txt"), []byte("feature content"), 0644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if _, err := runGit(context.Background(), repo, "add", "feature.txt"); err != nil {
+		t.Fatalf("git add: %v", err)
+	}
+	if _, err := runGit(context.Background(), repo, "commit", "-m", "feature change"); err != nil {
 		t.Fatalf("commit: %v", err)
 	}
 	if _, err := runGit(context.Background(), repo, "checkout", "main"); err != nil {
@@ -162,6 +169,51 @@ func TestIsBranchMergedFalse(t *testing.T) {
 	}
 	if merged {
 		t.Fatalf("expected branch to be unmerged")
+	}
+}
+
+func TestIsBranchMergedSquash(t *testing.T) {
+	repo := initRepo(t)
+	if err := CreateBranch(repo, "feature/test", "main", false); err != nil {
+		t.Fatalf("CreateBranch: %v", err)
+	}
+
+	// Add a change on the feature branch
+	if _, err := runGit(context.Background(), repo, "checkout", "feature/test"); err != nil {
+		t.Fatalf("checkout: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "feature.txt"), []byte("feature content"), 0644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if _, err := runGit(context.Background(), repo, "add", "feature.txt"); err != nil {
+		t.Fatalf("git add: %v", err)
+	}
+	if _, err := runGit(context.Background(), repo, "commit", "-m", "feature change"); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	// Simulate squash merge: apply same changes to main with a different commit
+	if _, err := runGit(context.Background(), repo, "checkout", "main"); err != nil {
+		t.Fatalf("checkout main: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "feature.txt"), []byte("feature content"), 0644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if _, err := runGit(context.Background(), repo, "add", "feature.txt"); err != nil {
+		t.Fatalf("git add: %v", err)
+	}
+	if _, err := runGit(context.Background(), repo, "commit", "-m", "squash: feature change"); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	// The feature branch is not an ancestor of main, but the diff is empty
+	// so it should be detected as effectively merged
+	merged, err := IsMerged(repo, "feature/test", "main", false)
+	if err != nil {
+		t.Fatalf("IsMerged: %v", err)
+	}
+	if !merged {
+		t.Fatalf("expected squash-merged branch to be considered merged")
 	}
 }
 
@@ -355,14 +407,20 @@ func TestRemoteBranchHasUnmergedCommits_AllMerged(t *testing.T) {
 func TestRemoteBranchHasUnmergedCommits_HasUnmerged(t *testing.T) {
 	localRepo, _ := initRepoWithRemote(t)
 
-	// Create feature branch with a commit
+	// Create feature branch with an actual file change
 	if err := CreateBranch(localRepo, "feature/test", "main", false); err != nil {
 		t.Fatalf("CreateBranch: %v", err)
 	}
 	if _, err := runGit(context.Background(), localRepo, "checkout", "feature/test"); err != nil {
 		t.Fatalf("git checkout: %v", err)
 	}
-	if _, err := runGit(context.Background(), localRepo, "commit", "--allow-empty", "-m", "feature work"); err != nil {
+	if err := os.WriteFile(filepath.Join(localRepo, "feature.txt"), []byte("feature content"), 0644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if _, err := runGit(context.Background(), localRepo, "add", "feature.txt"); err != nil {
+		t.Fatalf("git add: %v", err)
+	}
+	if _, err := runGit(context.Background(), localRepo, "commit", "-m", "feature work"); err != nil {
 		t.Fatalf("git commit: %v", err)
 	}
 

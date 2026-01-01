@@ -172,12 +172,20 @@ func IsMerged(repoPath, branch, baseBranch string, fetch bool) (bool, error) {
 		return false, err
 	}
 
+	// Fast path: check if branch is an ancestor of base (regular merge)
 	_, err = runGit(context.Background(), repoPath, "merge-base", "--is-ancestor", branch, baseRef)
 	if err == nil {
 		return true, nil
 	}
 
 	if code, ok := exitCode(err); ok && code == 1 {
+		// Not an ancestor - could be a squash merge. Check if the diff is empty,
+		// which means all changes from the branch are already in base.
+		_, diffErr := runGit(context.Background(), repoPath, "diff", "--quiet", branch, baseRef)
+		if diffErr == nil {
+			// No diff means effectively merged (squash merge case)
+			return true, nil
+		}
 		return false, nil
 	}
 
@@ -202,8 +210,10 @@ func HasUnpushedCommits(repoPath, branch string) (bool, error) {
 // This is useful before deleting a remote branch to ensure no work is lost.
 // Returns false if the remote branch doesn't exist.
 func RemoteBranchHasUnmergedCommits(repoPath, branch, baseBranch string) (bool, error) {
+	remoteBranch := "origin/" + branch
+
 	// Check if remote branch exists
-	if _, err := runGit(context.Background(), repoPath, "rev-parse", "--verify", "--quiet", "origin/"+branch); err != nil {
+	if _, err := runGit(context.Background(), repoPath, "rev-parse", "--verify", "--quiet", remoteBranch); err != nil {
 		// Remote branch doesn't exist, nothing to check
 		return false, nil
 	}
@@ -214,12 +224,25 @@ func RemoteBranchHasUnmergedCommits(repoPath, branch, baseBranch string) (bool, 
 	}
 
 	// Count commits in origin/<branch> that are not in baseRef
-	out, err := runGit(context.Background(), repoPath, "rev-list", "--count", baseRef+"..origin/"+branch)
+	out, err := runGit(context.Background(), repoPath, "rev-list", "--count", baseRef+".."+remoteBranch)
 	if err != nil {
 		return false, err
 	}
 
-	return strings.TrimSpace(out) != "0", nil
+	if strings.TrimSpace(out) == "0" {
+		// No commits difference by ancestry
+		return false, nil
+	}
+
+	// Has commits not in base by ancestry, but could be a squash merge.
+	// Check if the diff is empty (all changes incorporated).
+	_, diffErr := runGit(context.Background(), repoPath, "diff", "--quiet", remoteBranch, baseRef)
+	if diffErr == nil {
+		// No diff means effectively merged (squash merge case)
+		return false, nil
+	}
+
+	return true, nil
 }
 
 func TouchBranch(repoPath, branch string) error {
