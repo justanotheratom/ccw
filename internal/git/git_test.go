@@ -276,3 +276,112 @@ func TestDetectDefaultBranchNeitherError(t *testing.T) {
 		t.Fatal("expected error when neither main nor master exists")
 	}
 }
+
+// initRepoWithRemote creates a local repo with a bare "origin" remote for testing.
+func initRepoWithRemote(t *testing.T) (localRepo, bareRemote string) {
+	t.Helper()
+
+	// Create bare remote
+	bareRemote = t.TempDir()
+	if _, err := runGit(context.Background(), bareRemote, "init", "--bare"); err != nil {
+		t.Fatalf("git init --bare: %v", err)
+	}
+
+	// Create local repo
+	localRepo = t.TempDir()
+	if _, err := runGit(context.Background(), localRepo, "init"); err != nil {
+		t.Fatalf("git init: %v", err)
+	}
+	if _, err := runGit(context.Background(), localRepo, "checkout", "-b", "main"); err != nil {
+		t.Fatalf("git checkout: %v", err)
+	}
+	if _, err := runGit(context.Background(), localRepo, "config", "user.email", "test@example.com"); err != nil {
+		t.Fatalf("git config email: %v", err)
+	}
+	if _, err := runGit(context.Background(), localRepo, "config", "user.name", "Test User"); err != nil {
+		t.Fatalf("git config name: %v", err)
+	}
+	if _, err := runGit(context.Background(), localRepo, "commit", "--allow-empty", "-m", "initial"); err != nil {
+		t.Fatalf("git commit: %v", err)
+	}
+
+	// Add bare repo as origin
+	if _, err := runGit(context.Background(), localRepo, "remote", "add", "origin", bareRemote); err != nil {
+		t.Fatalf("git remote add: %v", err)
+	}
+
+	// Push main to origin
+	if _, err := runGit(context.Background(), localRepo, "push", "-u", "origin", "main"); err != nil {
+		t.Fatalf("git push: %v", err)
+	}
+
+	return localRepo, bareRemote
+}
+
+func TestRemoteBranchHasUnmergedCommits_NoRemote(t *testing.T) {
+	repo := initRepo(t)
+
+	// No remote exists, should return false
+	hasUnmerged, err := RemoteBranchHasUnmergedCommits(repo, "feature/test", "main")
+	if err != nil {
+		t.Fatalf("RemoteBranchHasUnmergedCommits: %v", err)
+	}
+	if hasUnmerged {
+		t.Fatal("expected false when remote branch doesn't exist")
+	}
+}
+
+func TestRemoteBranchHasUnmergedCommits_AllMerged(t *testing.T) {
+	localRepo, _ := initRepoWithRemote(t)
+
+	// Create feature branch and push it
+	if err := CreateBranch(localRepo, "feature/test", "main", false); err != nil {
+		t.Fatalf("CreateBranch: %v", err)
+	}
+	if _, err := runGit(context.Background(), localRepo, "push", "-u", "origin", "feature/test"); err != nil {
+		t.Fatalf("git push: %v", err)
+	}
+
+	// Feature branch is at same point as main, so no unmerged commits
+	hasUnmerged, err := RemoteBranchHasUnmergedCommits(localRepo, "feature/test", "main")
+	if err != nil {
+		t.Fatalf("RemoteBranchHasUnmergedCommits: %v", err)
+	}
+	if hasUnmerged {
+		t.Fatal("expected false when all commits are merged")
+	}
+}
+
+func TestRemoteBranchHasUnmergedCommits_HasUnmerged(t *testing.T) {
+	localRepo, _ := initRepoWithRemote(t)
+
+	// Create feature branch with a commit
+	if err := CreateBranch(localRepo, "feature/test", "main", false); err != nil {
+		t.Fatalf("CreateBranch: %v", err)
+	}
+	if _, err := runGit(context.Background(), localRepo, "checkout", "feature/test"); err != nil {
+		t.Fatalf("git checkout: %v", err)
+	}
+	if _, err := runGit(context.Background(), localRepo, "commit", "--allow-empty", "-m", "feature work"); err != nil {
+		t.Fatalf("git commit: %v", err)
+	}
+
+	// Push feature branch to origin
+	if _, err := runGit(context.Background(), localRepo, "push", "-u", "origin", "feature/test"); err != nil {
+		t.Fatalf("git push: %v", err)
+	}
+
+	// Fetch to update remote tracking refs
+	if _, err := runGit(context.Background(), localRepo, "fetch", "origin"); err != nil {
+		t.Fatalf("git fetch: %v", err)
+	}
+
+	// Remote branch has commit not in main
+	hasUnmerged, err := RemoteBranchHasUnmergedCommits(localRepo, "feature/test", "main")
+	if err != nil {
+		t.Fatalf("RemoteBranchHasUnmergedCommits: %v", err)
+	}
+	if !hasUnmerged {
+		t.Fatal("expected true when remote has unmerged commits")
+	}
+}

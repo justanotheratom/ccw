@@ -198,6 +198,30 @@ func HasUnpushedCommits(repoPath, branch string) (bool, error) {
 	return strings.TrimSpace(out) != "0", nil
 }
 
+// RemoteBranchHasUnmergedCommits checks if the remote branch has commits not in the base branch.
+// This is useful before deleting a remote branch to ensure no work is lost.
+// Returns false if the remote branch doesn't exist.
+func RemoteBranchHasUnmergedCommits(repoPath, branch, baseBranch string) (bool, error) {
+	// Check if remote branch exists
+	if _, err := runGit(context.Background(), repoPath, "rev-parse", "--verify", "--quiet", "origin/"+branch); err != nil {
+		// Remote branch doesn't exist, nothing to check
+		return false, nil
+	}
+
+	baseRef, err := resolveBaseRef(repoPath, baseBranch)
+	if err != nil {
+		return false, err
+	}
+
+	// Count commits in origin/<branch> that are not in baseRef
+	out, err := runGit(context.Background(), repoPath, "rev-list", "--count", baseRef+"..origin/"+branch)
+	if err != nil {
+		return false, err
+	}
+
+	return strings.TrimSpace(out) != "0", nil
+}
+
 func TouchBranch(repoPath, branch string) error {
 	_, err := runGit(context.Background(), repoPath, "update-ref", "--no-deref", "--create-reflog", "refs/heads/"+branch, "HEAD")
 	return err

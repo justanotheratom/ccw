@@ -396,10 +396,25 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, id string, opts RemoveOpt
 			if unpushed {
 				return fmt.Errorf("branch %q has unpushed commits. Push or use --force/--keep-branch.", ws.Branch)
 			}
+
+			remoteUnmerged, err := git.RemoteBranchHasUnmergedCommits(ws.RepoPath, ws.Branch, ws.BaseBranch)
+			if err != nil {
+				return err
+			}
+			if remoteUnmerged {
+				return fmt.Errorf("remote branch %q has commits not merged into %q.\nUse --force to delete anyway, or --keep-branch to only remove the workspace.", "origin/"+ws.Branch, ws.BaseBranch)
+			}
 		}
 
 		if err := git.DeleteBranch(ws.RepoPath, ws.Branch, opts.Force); err != nil {
 			errs = append(errs, fmt.Errorf("delete branch: %w", err))
+		}
+
+		// Delete remote branch if it exists
+		if exists, _ := git.RemoteBranchExists(ws.RepoPath, "origin", ws.Branch); exists {
+			if err := git.DeleteRemoteBranch(ws.RepoPath, "origin", ws.Branch); err != nil {
+				errs = append(errs, fmt.Errorf("delete remote branch: %w", err))
+			}
 		}
 	}
 
@@ -438,10 +453,27 @@ func (m *Manager) lookupWorkspace(ctx context.Context, query string) (string, Wo
 		return "", Workspace{}, err
 	}
 
+	// First, try exact name match (takes precedence over index)
 	if ws, ok := reg.Workspaces[query]; ok {
 		return query, ws, nil
 	}
 
+	// If query is a positive integer, try index-based lookup
+	if idx, err := strconv.Atoi(query); err == nil && idx > 0 {
+		ids := make([]string, 0, len(reg.Workspaces))
+		for id := range reg.Workspaces {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+
+		if idx > len(ids) {
+			return "", Workspace{}, fmt.Errorf("workspace index %d out of range (have %d workspaces)", idx, len(ids))
+		}
+		id := ids[idx-1] // 1-based index
+		return id, reg.Workspaces[id], nil
+	}
+
+	// Fall back to partial name matching
 	matches := reg.FindByPartialName(query)
 	if len(matches) == 1 {
 		ws := reg.Workspaces[matches[0]]
