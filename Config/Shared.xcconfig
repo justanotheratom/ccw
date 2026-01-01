@@ -6,10 +6,10 @@
 // ==========================================
 // Project Identity
 // ==========================================
-PRODUCT_NAME = CCWMenubar
-PRODUCT_DISPLAY_NAME = CCW Menubar
-PRODUCT_BUNDLE_IDENTIFIER = com.justanotheratom.ccw-menubar
-MARKETING_VERSION = 0.1.63
+PRODUCT_NAME = CCW
+PRODUCT_DISPLAY_NAME = CCW
+PRODUCT_BUNDLE_IDENTIFIER = com.justanotheratom.ccw
+MARKETING_VERSION = 0.1.64
 CURRENT_PROJECT_VERSION = 1
 
 // ==========================================
@@ -22,7 +22,7 @@ MACOSX_DEPLOYMENT_TARGET = 14.0
 // ==========================================
 GENERATE_INFOPLIST_FILE = YES
 INFOPLIST_KEY_LSUIElement = YES
-INFOPLIST_KEY_NSAppleEventsUsageDescription = CCW Menubar needs to control iTerm to focus existing sessions.
+INFOPLIST_KEY_NSAppleEventsUsageDescription = CCW needs to control iTerm to focus existing sessions.
 INFOPLIST_KEY_NSSupportsAutomaticTermination = NO
 
 // ==========================================

@@ -5,27 +5,165 @@ on:
     tags:
       - "v*"
 
-permissions:
-  contents: write
-
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: macos-14
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
-      - name: Build binaries
+
+      - name: Build ccw CLI (universal binary)
         run: |
-          mkdir -p dist
-          GOOS=darwin GOARCH=amd64 go build -o dist/ccw-darwin-amd64 .
-          GOOS=darwin GOARCH=arm64 go build -o dist/ccw-darwin-arm64 .
-          GOOS=linux GOARCH=amd64 go build -o dist/ccw-linux-amd64 .
-          GOOS=linux GOARCH=arm64 go build -o dist/ccw-linux-arm64 .
-      - name: Create GitHub Release
+          GOOS=darwin GOARCH=arm64 go build -o ccw-arm64 .
+          GOOS=darwin GOARCH=amd64 go build -o ccw-amd64 .
+          lipo -create -output ccw ccw-arm64 ccw-amd64
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "16.1"
+
+      - name: Import signing certificate (if available)
+        if: env.APPLE_CERTIFICATE != ''
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      - name: Build CCW App
+        run: |
+          TEAM_ID="$(echo "$DEVELOPER_ID" | sed -n 's/.*(\(.*\))$/\1/p')"
+          if [ -z "$TEAM_ID" ]; then
+            echo "Unable to parse team id from DEVELOPER_ID" >&2
+            exit 1
+          fi
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>developer-id</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>teamID</key>
+            <string>${TEAM_ID}</string>
+            <key>signingCertificate</key>
+            <string>${DEVELOPER_ID}</string>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -workspace CCWMenubar.xcworkspace \
+            -scheme CCWMenubar \
+            -configuration Release \
+            -archivePath build/CCW.xcarchive \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            CODE_SIGN_IDENTITY="$DEVELOPER_ID" \
+            CODE_SIGN_STYLE=Manual \
+            archive
+          xcodebuild -exportArchive \
+            -archivePath build/CCW.xcarchive \
+            -exportPath build/export \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+
+      - name: Code Sign (if certificates available)
+        if: env.APPLE_CERTIFICATE != ''
+        run: |
+          codesign --force --sign "$DEVELOPER_ID" --options runtime --timestamp \
+            build/export/CCW.app/Contents/MacOS/ccw
+          codesign --force --options runtime --timestamp \
+            --entitlements Config/CCWMenubar.entitlements \
+            --sign "$DEVELOPER_ID" \
+            build/export/CCW.app
+
+      - name: Notarize and Staple (app, if certificates available)
+        if: env.APPLE_CERTIFICATE != ''
+        run: |
+          echo "$NOTARYTOOL_KEY" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          ditto -c -k --keepParent build/export/CCW.app "$RUNNER_TEMP/CCW.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/CCW.zip" --wait \
+            --key "$RUNNER_TEMP/AuthKey.p8" --key-id "$NOTARYTOOL_KEY_ID" --issuer "$NOTARYTOOL_ISSUER"
+          xcrun stapler staple build/export/CCW.app
+
+      - name: Create DMG
+        run: |
+          brew install create-dmg
+          create-dmg \
+            --volname "CCW" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --app-drop-link 425 178 \
+            CCW.dmg \
+            build/export/CCW.app
+
+      - name: Notarize and Staple (dmg, if certificates available)
+        if: env.APPLE_CERTIFICATE != ''
+        run: |
+          echo "$NOTARYTOOL_KEY" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          xcrun notarytool submit CCW.dmg --wait \
+            --key "$RUNNER_TEMP/AuthKey.p8" --key-id "$NOTARYTOOL_KEY_ID" --issuer "$NOTARYTOOL_ISSUER"
+          xcrun stapler staple CCW.dmg
+
+      - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
-          generate_release_notes: true
+          files: CCW.dmg
+          generate_release_notes: false
+
+      - name: Update Homebrew Tap
+        if: env.TAP_PAT != ''
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          SHA="$(shasum -a 256 CCW.dmg | awk '{print $1}')"
+          git clone "https://x-access-token:${TAP_PAT}@github.com/justanotheratom/homebrew-ccw.git"
+          cd homebrew-ccw
+          mkdir -p Casks
+          cat > Casks/ccw.rb <<EOF
+          cask "ccw" do
+            version "${VERSION}"
+            sha256 "${SHA}"
+
+            url "https://github.com/justanotheratom/ccw/releases/download/v#{version}/CCW.dmg"
+            name "CCW"
+            desc "Claude Code Workspace manager"
+            homepage "https://github.com/justanotheratom/ccw"
+
+            depends_on macos: ">= :sonoma"
+
+            app "CCW.app"
+            binary "#{appdir}/CCW.app/Contents/MacOS/ccw", target: "ccw"
+
+            zap trash: [
+              "~/.ccw",
+            ]
+          end
+          EOF
+          if [ -z "$(git status --porcelain -- Casks/ccw.rb)" ]; then
+            echo "Cask unchanged"
+            exit 0
+          fi
+          git add Casks/ccw.rb
+          git -c user.name="github-actions[bot]" -c user.email="github-actions[bot]@users.noreply.github.com" commit -m "Update ccw cask to ${VERSION}"
+          git push
+
+env:
+  APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+  APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+  DEVELOPER_ID: ${{ secrets.DEVELOPER_ID }}
+  KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+  NOTARYTOOL_KEY: ${{ secrets.NOTARYTOOL_KEY }}
+  NOTARYTOOL_KEY_ID: ${{ secrets.NOTARYTOOL_KEY_ID }}
+  NOTARYTOOL_ISSUER: ${{ secrets.NOTARYTOOL_ISSUER }}
+  TAP_PAT: ${{ secrets.TAP_PAT }}
