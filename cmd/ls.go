@@ -6,6 +6,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/ccw/ccw/internal/workspace"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -29,30 +30,38 @@ var lsCmd = &cobra.Command{
 			return err
 		}
 
-		if repoFilter != "" {
-			filtered := statuses[:0]
-			for _, st := range statuses {
-				if st.Workspace.Repo == repoFilter {
-					filtered = append(filtered, st)
-				}
+		// Track global indices before filtering (1-based, matching lookupWorkspace)
+		type indexedStatus struct {
+			Index  int
+			Status workspace.WorkspaceStatus
+		}
+		indexed := make([]indexedStatus, 0, len(statuses))
+		for i, st := range statuses {
+			if repoFilter == "" || st.Workspace.Repo == repoFilter {
+				indexed = append(indexed, indexedStatus{Index: i + 1, Status: st})
 			}
-			statuses = filtered
 		}
 
 		if showJSON {
+			// For JSON, just output the filtered statuses (without index wrapper)
+			filtered := make([]workspace.WorkspaceStatus, len(indexed))
+			for i, is := range indexed {
+				filtered[i] = is.Status
+			}
 			enc := json.NewEncoder(cmd.OutOrStdout())
 			enc.SetIndent("", "  ")
-			return enc.Encode(statuses)
+			return enc.Encode(filtered)
 		}
 
 		w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 		if showAll {
-			fmt.Fprintln(w, "WORKSPACE\tSTATUS\tLAST ACCESSED\tWORKTREE\tBRANCH")
+			fmt.Fprintln(w, "#\tWORKSPACE\tSTATUS\tLAST ACCESSED\tWORKTREE\tBRANCH")
 		} else {
-			fmt.Fprintln(w, "WORKSPACE\tSTATUS\tLAST ACCESSED")
+			fmt.Fprintln(w, "#\tWORKSPACE\tSTATUS\tLAST ACCESSED")
 		}
 
-		for _, st := range statuses {
+		for _, is := range indexed {
+			st := is.Status
 			status := "dead"
 			if st.SessionAlive {
 				status = "alive"
@@ -65,9 +74,9 @@ var lsCmd = &cobra.Command{
 			}
 			last := st.Workspace.LastAccessedAt.Format(time.RFC3339)
 			if showAll {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", st.ID, coloredStatus, last, st.Workspace.WorktreePath, st.Workspace.Branch)
+				fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\n", is.Index, st.ID, coloredStatus, last, st.Workspace.WorktreePath, st.Workspace.Branch)
 			} else {
-				fmt.Fprintf(w, "%s\t%s\t%s\n", st.ID, coloredStatus, last)
+				fmt.Fprintf(w, "%d\t%s\t%s\t%s\n", is.Index, st.ID, coloredStatus, last)
 			}
 		}
 

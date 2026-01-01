@@ -330,3 +330,189 @@ func TestCreateWorkspacePathTraversalValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestLookupWorkspace_ByIndex(t *testing.T) {
+	reposRoot, repoName := initRepoForManager(t)
+	tmuxStub := newStubTmux()
+	mgr := newManagerForTest(t, reposRoot, tmuxStub)
+
+	// Create two workspaces
+	if _, err := mgr.CreateWorkspace(context.Background(), repoName, "feature/a", CreateOptions{NoFetch: true, NoAttach: true}); err != nil {
+		t.Fatalf("CreateWorkspace: %v", err)
+	}
+	if _, err := mgr.CreateWorkspace(context.Background(), repoName, "feature/b", CreateOptions{NoFetch: true, NoAttach: true}); err != nil {
+		t.Fatalf("CreateWorkspace: %v", err)
+	}
+
+	// Lookup by index 1 (should be demo/feature/a since sorted alphabetically)
+	info, err := mgr.WorkspaceInfo(context.Background(), "1")
+	if err != nil {
+		t.Fatalf("WorkspaceInfo: %v", err)
+	}
+	if info.ID != WorkspaceID(repoName, "feature/a") {
+		t.Fatalf("expected demo/feature/a, got %s", info.ID)
+	}
+
+	// Lookup by index 2 (should be demo/feature/b)
+	info, err = mgr.WorkspaceInfo(context.Background(), "2")
+	if err != nil {
+		t.Fatalf("WorkspaceInfo: %v", err)
+	}
+	if info.ID != WorkspaceID(repoName, "feature/b") {
+		t.Fatalf("expected demo/feature/b, got %s", info.ID)
+	}
+}
+
+func TestLookupWorkspace_IndexOutOfRange(t *testing.T) {
+	reposRoot, repoName := initRepoForManager(t)
+	tmuxStub := newStubTmux()
+	mgr := newManagerForTest(t, reposRoot, tmuxStub)
+
+	// Create one workspace
+	if _, err := mgr.CreateWorkspace(context.Background(), repoName, "feature/test", CreateOptions{NoFetch: true, NoAttach: true}); err != nil {
+		t.Fatalf("CreateWorkspace: %v", err)
+	}
+
+	// Index 2 should be out of range
+	_, err := mgr.WorkspaceInfo(context.Background(), "2")
+	if err == nil {
+		t.Fatal("expected error for out of range index")
+	}
+}
+
+func TestLookupWorkspace_IndexZero(t *testing.T) {
+	reposRoot, repoName := initRepoForManager(t)
+	tmuxStub := newStubTmux()
+	mgr := newManagerForTest(t, reposRoot, tmuxStub)
+
+	// Create one workspace
+	if _, err := mgr.CreateWorkspace(context.Background(), repoName, "feature/test", CreateOptions{NoFetch: true, NoAttach: true}); err != nil {
+		t.Fatalf("CreateWorkspace: %v", err)
+	}
+
+	// Index 0 should fail (1-based indexing)
+	_, err := mgr.WorkspaceInfo(context.Background(), "0")
+	if err == nil {
+		t.Fatal("expected error for index 0")
+	}
+}
+
+func TestLookupWorkspace_NameTakesPrecedence(t *testing.T) {
+	reposRoot, repoName := initRepoForManager(t)
+	tmuxStub := newStubTmux()
+	mgr := newManagerForTest(t, reposRoot, tmuxStub)
+
+	// Create workspaces - one with a numeric-looking name (via ID, though branch names can't be just numbers)
+	if _, err := mgr.CreateWorkspace(context.Background(), repoName, "feature/a", CreateOptions{NoFetch: true, NoAttach: true}); err != nil {
+		t.Fatalf("CreateWorkspace: %v", err)
+	}
+	if _, err := mgr.CreateWorkspace(context.Background(), repoName, "feature/b", CreateOptions{NoFetch: true, NoAttach: true}); err != nil {
+		t.Fatalf("CreateWorkspace: %v", err)
+	}
+
+	// Lookup by exact name should work
+	info, err := mgr.WorkspaceInfo(context.Background(), WorkspaceID(repoName, "feature/b"))
+	if err != nil {
+		t.Fatalf("WorkspaceInfo: %v", err)
+	}
+	if info.ID != WorkspaceID(repoName, "feature/b") {
+		t.Fatalf("expected exact name match, got %s", info.ID)
+	}
+}
+
+func TestRemoveWorkspace_DeletesRemoteBranch(t *testing.T) {
+	reposRoot, repoName := initRepoForManager(t)
+	tmuxStub := newStubTmux()
+	mgr := newManagerForTest(t, reposRoot, tmuxStub)
+
+	ws, err := mgr.CreateWorkspace(context.Background(), repoName, "feature/test", CreateOptions{NoFetch: true, NoAttach: true})
+	if err != nil {
+		t.Fatalf("CreateWorkspace: %v", err)
+	}
+
+	// Push the branch to remote
+	runGitCmd(t, ws.WorktreePath, "push", "-u", "origin", "feature/test")
+
+	repoPath := filepath.Join(reposRoot, repoName)
+
+	// Verify remote branch exists
+	exists, err := git.RemoteBranchExists(repoPath, "origin", "feature/test")
+	if err != nil {
+		t.Fatalf("RemoteBranchExists: %v", err)
+	}
+	if !exists {
+		t.Fatal("expected remote branch to exist before removal")
+	}
+
+	// Remove workspace with force (to skip merge checks)
+	if err := mgr.RemoveWorkspace(context.Background(), WorkspaceID(repoName, "feature/test"), RemoveOptions{Force: true}); err != nil {
+		t.Fatalf("RemoveWorkspace: %v", err)
+	}
+
+	// Fetch to update remote refs
+	runGitCmd(t, repoPath, "fetch", "--prune", "origin")
+
+	// Verify remote branch is deleted
+	exists, err = git.RemoteBranchExists(repoPath, "origin", "feature/test")
+	if err != nil {
+		t.Fatalf("RemoteBranchExists: %v", err)
+	}
+	if exists {
+		t.Fatal("expected remote branch to be deleted")
+	}
+}
+
+func TestRemoveWorkspace_SkipsRemoteIfNotExists(t *testing.T) {
+	reposRoot, repoName := initRepoForManager(t)
+	tmuxStub := newStubTmux()
+	mgr := newManagerForTest(t, reposRoot, tmuxStub)
+
+	// Create workspace but don't push to remote
+	if _, err := mgr.CreateWorkspace(context.Background(), repoName, "feature/test", CreateOptions{NoFetch: true, NoAttach: true}); err != nil {
+		t.Fatalf("CreateWorkspace: %v", err)
+	}
+
+	// Remove should succeed even though remote branch doesn't exist
+	if err := mgr.RemoveWorkspace(context.Background(), WorkspaceID(repoName, "feature/test"), RemoveOptions{Force: true}); err != nil {
+		t.Fatalf("RemoveWorkspace: %v", err)
+	}
+}
+
+func TestRemoveWorkspace_KeepBranchSkipsRemote(t *testing.T) {
+	reposRoot, repoName := initRepoForManager(t)
+	tmuxStub := newStubTmux()
+	mgr := newManagerForTest(t, reposRoot, tmuxStub)
+
+	ws, err := mgr.CreateWorkspace(context.Background(), repoName, "feature/test", CreateOptions{NoFetch: true, NoAttach: true})
+	if err != nil {
+		t.Fatalf("CreateWorkspace: %v", err)
+	}
+
+	// Push the branch to remote
+	runGitCmd(t, ws.WorktreePath, "push", "-u", "origin", "feature/test")
+
+	repoPath := filepath.Join(reposRoot, repoName)
+
+	// Remove with KeepBranch=true
+	if err := mgr.RemoveWorkspace(context.Background(), WorkspaceID(repoName, "feature/test"), RemoveOptions{KeepBranch: true}); err != nil {
+		t.Fatalf("RemoveWorkspace: %v", err)
+	}
+
+	// Local branch should still exist
+	exists, err := git.BranchExists(repoPath, "feature/test")
+	if err != nil {
+		t.Fatalf("BranchExists: %v", err)
+	}
+	if !exists {
+		t.Fatal("expected local branch to still exist with KeepBranch=true")
+	}
+
+	// Remote branch should still exist
+	exists, err = git.RemoteBranchExists(repoPath, "origin", "feature/test")
+	if err != nil {
+		t.Fatalf("RemoteBranchExists: %v", err)
+	}
+	if !exists {
+		t.Fatal("expected remote branch to still exist with KeepBranch=true")
+	}
+}
