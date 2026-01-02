@@ -48,6 +48,11 @@ func DefaultDependencies() []Dependency {
 			Optional:    true,
 			InstallHint: "Optional: install with `brew install lazygit`.",
 		},
+		{
+			Name:        "gh",
+			DisplayName: "GitHub CLI",
+			InstallHint: "Install with `brew install gh` then run `gh auth login`.",
+		},
 	}
 }
 

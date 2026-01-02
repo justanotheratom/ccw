@@ -15,6 +15,7 @@ import (
 	"github.com/ccw/ccw/internal/config"
 	"github.com/ccw/ccw/internal/deps"
 	"github.com/ccw/ccw/internal/git"
+	"github.com/ccw/ccw/internal/github"
 	"github.com/ccw/ccw/internal/tmux"
 	"golang.org/x/term"
 )
@@ -48,6 +49,12 @@ type Manager struct {
 	skipDeps         bool
 	claudeCaps       claude.Capabilities
 	capsDetected     bool
+
+	// GitHub clients keyed by repoPath
+	ghClients map[string]*github.Client
+
+	// skipGitHubCheck skips GitHub repo validation (for testing only)
+	skipGitHubCheck bool
 }
 
 type CreateOptions struct {
@@ -125,6 +132,32 @@ func (m *Manager) detectOptionalDeps() {
 	}
 }
 
+// getGitHubClient returns a GitHub client for the given repo path.
+// Returns nil if gh is not available or repo is not GitHub-hosted.
+func (m *Manager) getGitHubClient(repoPath string) *github.Client {
+	if m.ghClients == nil {
+		m.ghClients = make(map[string]*github.Client)
+	}
+
+	if client, ok := m.ghClients[repoPath]; ok {
+		return client
+	}
+
+	client := github.NewClient(repoPath)
+	m.ghClients[repoPath] = client
+	return client
+}
+
+// getPRChecker returns a MergeChecker function for the given repo path.
+// The checker uses GitHub PR status to determine if a branch was merged.
+func (m *Manager) getPRChecker(repoPath string) git.MergeChecker {
+	client := m.getGitHubClient(repoPath)
+	if client == nil || !client.IsGitHubRepo() {
+		return nil
+	}
+	return client.IsPRMerged
+}
+
 func (m *Manager) checkDepsByName(names ...string) error {
 	if m.skipDeps || os.Getenv("CCW_SKIP_DEPS") == "1" {
 		return nil
@@ -164,7 +197,7 @@ func (m *Manager) checkDepsByName(names ...string) error {
 }
 
 func (m *Manager) CreateWorkspace(ctx context.Context, repo, branch string, opts CreateOptions) (Workspace, error) {
-	if err := m.checkDepsByName("git", "tmux", "claude"); err != nil {
+	if err := m.checkDepsByName("git", "tmux", "claude", "gh"); err != nil {
 		return Workspace{}, err
 	}
 
@@ -183,6 +216,19 @@ func (m *Manager) CreateWorkspace(ctx context.Context, repo, branch string, opts
 	repoPath := filepath.Join(reposDir, repo)
 	if _, err := git.ValidateRepo(repoPath); err != nil {
 		return Workspace{}, err
+	}
+
+	// Validate this is a GitHub-hosted repo (unless skipped for testing)
+	if !m.skipGitHubCheck {
+		ghClient := m.getGitHubClient(repoPath)
+		if !ghClient.IsGitHubRepo() {
+			return Workspace{}, fmt.Errorf("repository %q is not hosted on GitHub. ccw requires GitHub repositories.", repo)
+		}
+
+		// Check gh authentication
+		if err := github.CheckAuthenticated(); err != nil {
+			return Workspace{}, err
+		}
 	}
 
 	baseBranch := opts.BaseBranch
@@ -389,7 +435,15 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, id string, opts RemoveOpt
 				return err
 			}
 
-			merged, err := git.IsMerged(ws.RepoPath, ws.Branch, ws.BaseBranch, false)
+			var prChecker git.MergeChecker
+			if !m.skipGitHubCheck {
+				// Check gh authentication before PR-based merge detection
+				if err := github.CheckAuthenticated(); err != nil {
+					return err
+				}
+				prChecker = m.getPRChecker(ws.RepoPath)
+			}
+			merged, err := git.IsMergedWithPR(ctx, ws.RepoPath, ws.Branch, ws.BaseBranch, false, prChecker)
 			if err != nil {
 				return err
 			}
@@ -414,7 +468,7 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, id string, opts RemoveOpt
 					return fmt.Errorf("branch %q has unpushed commits. Push or use --force/--keep-branch.", ws.Branch)
 				}
 
-				remoteUnmerged, err := git.RemoteBranchHasUnmergedCommits(ws.RepoPath, ws.Branch, ws.BaseBranch)
+				remoteUnmerged, err := git.RemoteBranchHasUnmergedCommitsWithPR(ctx, ws.RepoPath, ws.Branch, ws.BaseBranch, prChecker)
 				if err != nil {
 					return err
 				}
@@ -564,6 +618,13 @@ func (m *Manager) StaleWorkspaces(ctx context.Context, force bool) ([]WorkspaceS
 		return nil, err
 	}
 
+	// Check gh authentication for PR-based merge detection (unless skipped)
+	if !m.skipGitHubCheck {
+		if err := github.CheckAuthenticated(); err != nil {
+			return nil, err
+		}
+	}
+
 	reg, err := m.regStore.Read(ctx)
 	if err != nil {
 		return nil, err
@@ -571,7 +632,11 @@ func (m *Manager) StaleWorkspaces(ctx context.Context, force bool) ([]WorkspaceS
 
 	var results []WorkspaceStatus
 	for id, ws := range reg.Workspaces {
-		merged, err := git.IsMerged(ws.RepoPath, ws.Branch, ws.BaseBranch, false)
+		var prChecker git.MergeChecker
+		if !m.skipGitHubCheck {
+			prChecker = m.getPRChecker(ws.RepoPath)
+		}
+		merged, err := git.IsMergedWithPR(ctx, ws.RepoPath, ws.Branch, ws.BaseBranch, false, prChecker)
 		if err != nil {
 			if force {
 				continue

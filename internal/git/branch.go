@@ -160,11 +160,26 @@ func DeleteBranch(repoPath, branch string, force bool) error {
 	return nil
 }
 
-func IsMerged(repoPath, branch, baseBranch string, fetch bool) (bool, error) {
+// MergeChecker is a function that checks if a branch was merged via PR.
+// Returns (merged, found, error) where found=false means no PR exists for this branch.
+type MergeChecker func(ctx context.Context, branch string) (merged bool, found bool, err error)
+
+// IsMergedWithPR checks if a branch is merged, optionally using PR detection first.
+// If prChecker is provided and finds a PR, its result is used. Otherwise falls back to git heuristics.
+func IsMergedWithPR(ctx context.Context, repoPath, branch, baseBranch string, fetch bool, prChecker MergeChecker) (bool, error) {
 	if fetch {
 		if err := Fetch(repoPath, true); err != nil {
 			return false, err
 		}
+	}
+
+	// Try PR-based detection first if available
+	if prChecker != nil {
+		merged, found, err := prChecker(ctx, branch)
+		if err == nil && found {
+			return merged, nil
+		}
+		// Fall through to git-based detection on error or not found
 	}
 
 	baseRef, err := resolveBaseRef(repoPath, baseBranch)
@@ -173,23 +188,44 @@ func IsMerged(repoPath, branch, baseBranch string, fetch bool) (bool, error) {
 	}
 
 	// Fast path: check if branch is an ancestor of base (regular merge)
-	_, err = runGit(context.Background(), repoPath, "merge-base", "--is-ancestor", branch, baseRef)
+	_, err = runGit(ctx, repoPath, "merge-base", "--is-ancestor", branch, baseRef)
 	if err == nil {
 		return true, nil
 	}
 
 	if code, ok := exitCode(err); ok && code == 1 {
-		// Not an ancestor - could be a squash merge. Check if the diff is empty,
-		// which means all changes from the branch are already in base.
-		_, diffErr := runGit(context.Background(), repoPath, "diff", "--quiet", branch, baseRef)
+		// Not an ancestor - could be a squash merge. Check if the branch's changes
+		// are in base by comparing only the files that the branch modified.
+		mergeBase, mbErr := runGit(ctx, repoPath, "merge-base", branch, baseRef)
+		if mbErr != nil {
+			return false, nil
+		}
+		mergeBase = strings.TrimSpace(mergeBase)
+
+		// Get files that branch changed vs merge-base
+		changedFiles, cfErr := runGit(ctx, repoPath, "diff", "--name-only", mergeBase, branch)
+		if cfErr != nil || strings.TrimSpace(changedFiles) == "" {
+			// No changes on branch, consider it merged
+			return true, nil
+		}
+
+		// Check if those specific files are the same in branch and base
+		files := strings.Fields(changedFiles)
+		args := append([]string{"diff", "--quiet", branch, baseRef, "--"}, files...)
+		_, diffErr := runGit(ctx, repoPath, args...)
 		if diffErr == nil {
-			// No diff means effectively merged (squash merge case)
+			// Branch's changed files match base - squash merged
 			return true, nil
 		}
 		return false, nil
 	}
 
 	return false, err
+}
+
+// IsMerged checks if a branch is merged into the base branch using git heuristics only.
+func IsMerged(repoPath, branch, baseBranch string, fetch bool) (bool, error) {
+	return IsMergedWithPR(context.Background(), repoPath, branch, baseBranch, fetch, nil)
 }
 
 func HasUnpushedCommits(repoPath, branch string) (bool, error) {
@@ -206,16 +242,25 @@ func HasUnpushedCommits(repoPath, branch string) (bool, error) {
 	return strings.TrimSpace(out) != "0", nil
 }
 
-// RemoteBranchHasUnmergedCommits checks if the remote branch has commits not in the base branch.
-// This is useful before deleting a remote branch to ensure no work is lost.
+// RemoteBranchHasUnmergedCommitsWithPR checks if the remote branch has commits not in the base branch.
+// Uses PR checker first if provided, falls back to git heuristics.
 // Returns false if the remote branch doesn't exist.
-func RemoteBranchHasUnmergedCommits(repoPath, branch, baseBranch string) (bool, error) {
+func RemoteBranchHasUnmergedCommitsWithPR(ctx context.Context, repoPath, branch, baseBranch string, prChecker MergeChecker) (bool, error) {
 	remoteBranch := "origin/" + branch
 
 	// Check if remote branch exists
-	if _, err := runGit(context.Background(), repoPath, "rev-parse", "--verify", "--quiet", remoteBranch); err != nil {
+	if _, err := runGit(ctx, repoPath, "rev-parse", "--verify", "--quiet", remoteBranch); err != nil {
 		// Remote branch doesn't exist, nothing to check
 		return false, nil
+	}
+
+	// Try PR-based detection first if available
+	if prChecker != nil {
+		merged, found, err := prChecker(ctx, branch)
+		if err == nil && found {
+			return !merged, nil // Has unmerged = !merged
+		}
+		// Fall through to git-based detection on error or not found
 	}
 
 	baseRef, err := resolveBaseRef(repoPath, baseBranch)
@@ -224,7 +269,7 @@ func RemoteBranchHasUnmergedCommits(repoPath, branch, baseBranch string) (bool, 
 	}
 
 	// Count commits in origin/<branch> that are not in baseRef
-	out, err := runGit(context.Background(), repoPath, "rev-list", "--count", baseRef+".."+remoteBranch)
+	out, err := runGit(ctx, repoPath, "rev-list", "--count", baseRef+".."+remoteBranch)
 	if err != nil {
 		return false, err
 	}
@@ -235,14 +280,37 @@ func RemoteBranchHasUnmergedCommits(repoPath, branch, baseBranch string) (bool, 
 	}
 
 	// Has commits not in base by ancestry, but could be a squash merge.
-	// Check if the diff is empty (all changes incorporated).
-	_, diffErr := runGit(context.Background(), repoPath, "diff", "--quiet", remoteBranch, baseRef)
+	// Check if the remote branch's changes are in base.
+	mergeBase, mbErr := runGit(ctx, repoPath, "merge-base", remoteBranch, baseRef)
+	if mbErr != nil {
+		return true, nil
+	}
+	mergeBase = strings.TrimSpace(mergeBase)
+
+	// Get files that remote branch changed vs merge-base
+	changedFiles, cfErr := runGit(ctx, repoPath, "diff", "--name-only", mergeBase, remoteBranch)
+	if cfErr != nil || strings.TrimSpace(changedFiles) == "" {
+		// No changes on remote branch
+		return false, nil
+	}
+
+	// Check if those specific files are the same in remote branch and base
+	files := strings.Fields(changedFiles)
+	args := append([]string{"diff", "--quiet", remoteBranch, baseRef, "--"}, files...)
+	_, diffErr := runGit(ctx, repoPath, args...)
 	if diffErr == nil {
-		// No diff means effectively merged (squash merge case)
+		// Remote branch's changed files match base - squash merged
 		return false, nil
 	}
 
 	return true, nil
+}
+
+// RemoteBranchHasUnmergedCommits checks if the remote branch has commits not in the base branch.
+// This is useful before deleting a remote branch to ensure no work is lost.
+// Returns false if the remote branch doesn't exist.
+func RemoteBranchHasUnmergedCommits(repoPath, branch, baseBranch string) (bool, error) {
+	return RemoteBranchHasUnmergedCommitsWithPR(context.Background(), repoPath, branch, baseBranch, nil)
 }
 
 // GetDiffFiles returns the list of files that differ between a branch and base.

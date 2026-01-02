@@ -443,3 +443,148 @@ func TestRemoteBranchHasUnmergedCommits_HasUnmerged(t *testing.T) {
 		t.Fatal("expected true when remote has unmerged commits")
 	}
 }
+
+// Tests for IsMergedWithPR with mocked PR checker
+
+func TestIsMergedWithPR_PRMerged(t *testing.T) {
+	repo := initRepo(t)
+	if err := CreateBranch(repo, "feature/test", "main", false); err != nil {
+		t.Fatalf("CreateBranch: %v", err)
+	}
+
+	// Add unmerged commit
+	if _, err := runGit(context.Background(), repo, "checkout", "feature/test"); err != nil {
+		t.Fatalf("checkout: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "feature.txt"), []byte("feature content"), 0644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if _, err := runGit(context.Background(), repo, "add", "feature.txt"); err != nil {
+		t.Fatalf("git add: %v", err)
+	}
+	if _, err := runGit(context.Background(), repo, "commit", "-m", "feature work"); err != nil {
+		t.Fatalf("git commit: %v", err)
+	}
+	if _, err := runGit(context.Background(), repo, "checkout", "main"); err != nil {
+		t.Fatalf("checkout main: %v", err)
+	}
+
+	// Without PR checker, branch should be unmerged (git heuristics)
+	merged, err := IsMerged(repo, "feature/test", "main", false)
+	if err != nil {
+		t.Fatalf("IsMerged: %v", err)
+	}
+	if merged {
+		t.Fatal("expected branch to be unmerged without PR checker")
+	}
+
+	// With PR checker that returns merged, branch should be merged
+	prChecker := func(ctx context.Context, branch string) (bool, bool, error) {
+		return true, true, nil // merged=true, found=true
+	}
+
+	merged, err = IsMergedWithPR(context.Background(), repo, "feature/test", "main", false, prChecker)
+	if err != nil {
+		t.Fatalf("IsMergedWithPR: %v", err)
+	}
+	if !merged {
+		t.Fatal("expected branch to be merged with PR checker returning merged")
+	}
+}
+
+func TestIsMergedWithPR_PRNotMerged(t *testing.T) {
+	repo := initRepo(t)
+	if err := CreateBranch(repo, "feature/test", "main", false); err != nil {
+		t.Fatalf("CreateBranch: %v", err)
+	}
+
+	// PR checker returns not merged
+	prChecker := func(ctx context.Context, branch string) (bool, bool, error) {
+		return false, true, nil // merged=false, found=true
+	}
+
+	merged, err := IsMergedWithPR(context.Background(), repo, "feature/test", "main", false, prChecker)
+	if err != nil {
+		t.Fatalf("IsMergedWithPR: %v", err)
+	}
+	if merged {
+		t.Fatal("expected branch to not be merged when PR checker returns not merged")
+	}
+}
+
+func TestIsMergedWithPR_NoPR_FallbackToGit(t *testing.T) {
+	repo := initRepo(t)
+	if err := CreateBranch(repo, "feature/test", "main", false); err != nil {
+		t.Fatalf("CreateBranch: %v", err)
+	}
+
+	// PR checker returns not found, should fall back to git
+	prChecker := func(ctx context.Context, branch string) (bool, bool, error) {
+		return false, false, nil // found=false
+	}
+
+	// Branch is at same point as main, git heuristics should say merged
+	merged, err := IsMergedWithPR(context.Background(), repo, "feature/test", "main", false, prChecker)
+	if err != nil {
+		t.Fatalf("IsMergedWithPR: %v", err)
+	}
+	if !merged {
+		t.Fatal("expected branch to be merged via git heuristics when no PR found")
+	}
+}
+
+func TestIsMergedWithPR_NilChecker_UsesGit(t *testing.T) {
+	repo := initRepo(t)
+	if err := CreateBranch(repo, "feature/test", "main", false); err != nil {
+		t.Fatalf("CreateBranch: %v", err)
+	}
+
+	// nil PR checker, should use git heuristics
+	merged, err := IsMergedWithPR(context.Background(), repo, "feature/test", "main", false, nil)
+	if err != nil {
+		t.Fatalf("IsMergedWithPR: %v", err)
+	}
+	if !merged {
+		t.Fatal("expected branch to be merged via git heuristics with nil PR checker")
+	}
+}
+
+func TestRemoteBranchHasUnmergedCommitsWithPR_PRMerged(t *testing.T) {
+	localRepo, _ := initRepoWithRemote(t)
+
+	// Create feature branch with an actual file change
+	if err := CreateBranch(localRepo, "feature/test", "main", false); err != nil {
+		t.Fatalf("CreateBranch: %v", err)
+	}
+	if _, err := runGit(context.Background(), localRepo, "checkout", "feature/test"); err != nil {
+		t.Fatalf("git checkout: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(localRepo, "feature.txt"), []byte("feature content"), 0644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if _, err := runGit(context.Background(), localRepo, "add", "feature.txt"); err != nil {
+		t.Fatalf("git add: %v", err)
+	}
+	if _, err := runGit(context.Background(), localRepo, "commit", "-m", "feature work"); err != nil {
+		t.Fatalf("git commit: %v", err)
+	}
+	if _, err := runGit(context.Background(), localRepo, "push", "-u", "origin", "feature/test"); err != nil {
+		t.Fatalf("git push: %v", err)
+	}
+	if _, err := runGit(context.Background(), localRepo, "fetch", "origin"); err != nil {
+		t.Fatalf("git fetch: %v", err)
+	}
+
+	// PR checker returns merged
+	prChecker := func(ctx context.Context, branch string) (bool, bool, error) {
+		return true, true, nil // merged=true, found=true
+	}
+
+	hasUnmerged, err := RemoteBranchHasUnmergedCommitsWithPR(context.Background(), localRepo, "feature/test", "main", prChecker)
+	if err != nil {
+		t.Fatalf("RemoteBranchHasUnmergedCommitsWithPR: %v", err)
+	}
+	if hasUnmerged {
+		t.Fatal("expected no unmerged commits when PR is merged")
+	}
+}

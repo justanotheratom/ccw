@@ -101,6 +101,7 @@ func newManagerForTest(t *testing.T, reposRoot string, tmuxRunner *stubTmux) *Ma
 
 	mgr.cfg.ReposDir = reposRoot
 	mgr.skipDeps = true
+	mgr.skipGitHubCheck = true
 	if err := mgr.cfgStore.Save(mgr.cfg); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
