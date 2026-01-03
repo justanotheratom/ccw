@@ -122,3 +122,52 @@ func TestCCModeHasSession(t *testing.T) {
 		t.Fatalf("SessionExists with CC mode: %v", err)
 	}
 }
+
+func TestNormalizeTarget(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		expect string
+	}{
+		{"simple session", "my-session", "my-session:"},
+		{"session with dot", "elicited.blog--branch", "elicited.blog--branch:"},
+		{"multiple dots", "foo.bar.baz--feature", "foo.bar.baz--feature:"},
+		{"already has colon", "session:window", "session:window"},
+		{"full target", "session:window.pane", "session:window.pane"},
+		{"colon only", "session:", "session:"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeTarget(tt.input)
+			if got != tt.expect {
+				t.Errorf("normalizeTarget(%q) = %q, want %q", tt.input, got, tt.expect)
+			}
+		})
+	}
+}
+
+func TestSplitPaneWithUnderscoreInName(t *testing.T) {
+	requireTmux(t)
+	runner := NewRunner(false)
+	// Session name with underscores (dots are converted to underscores by SafeName)
+	name := "test_dotted" + time.Now().Format("150405")
+	dir := t.TempDir()
+
+	if err := runner.CreateSession(name, dir, true); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	defer runner.KillSession(name)
+
+	if err := runner.SplitPane(name, true, dir); err != nil {
+		t.Fatalf("SplitPane with underscored session name: %v", err)
+	}
+
+	panes, err := runner.ListPanes(name)
+	if err != nil {
+		t.Fatalf("ListPanes: %v", err)
+	}
+	if panes != 2 {
+		t.Fatalf("expected 2 panes, got %d", panes)
+	}
+}

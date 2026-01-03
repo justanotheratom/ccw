@@ -261,7 +261,11 @@ func exitCode(err error) (int, bool) {
 }
 
 func normalizeTarget(target string) string {
-	if strings.ContainsAny(target, ":.") {
+	// Only check for ":" - the session:window separator.
+	// Session names can legitimately contain "." (e.g., "elicited.blog--branch").
+	// Tmux uses "." as window.pane separator, but we want to append ":" to
+	// session-only targets to avoid tmux misinterpreting dots in session names.
+	if strings.Contains(target, ":") {
 		return target
 	}
 	return target + ":"
