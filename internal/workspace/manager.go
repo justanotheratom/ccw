@@ -459,7 +459,8 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, id string, opts RemoveOpt
 				}
 			}
 
-			if !opts.Force {
+			// Skip unpushed/unmerged checks if branch is already merged - work is safe in base branch
+			if !opts.Force && !merged {
 				unpushed, err := git.HasUnpushedCommits(ws.RepoPath, ws.Branch)
 				if err != nil {
 					return err
