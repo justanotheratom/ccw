@@ -417,6 +417,9 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, id string, opts RemoveOpt
 		return err
 	}
 
+	// Track if branch is confirmed merged (via PR check) - used to force delete local branch
+	merged := false
+
 	// Run all safety checks BEFORE any destructive actions
 	if !opts.KeepBranch && !opts.Force {
 		branchExists, _ := git.BranchExists(ws.RepoPath, ws.Branch)
@@ -443,7 +446,7 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, id string, opts RemoveOpt
 				}
 				prChecker = m.getPRChecker(ws.RepoPath)
 			}
-			merged, err := git.IsMergedWithPR(ctx, ws.RepoPath, ws.Branch, ws.BaseBranch, false, prChecker)
+			merged, err = git.IsMergedWithPR(ctx, ws.RepoPath, ws.Branch, ws.BaseBranch, false, prChecker)
 			if err != nil {
 				return err
 			}
@@ -501,7 +504,8 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, id string, opts RemoveOpt
 		branchExists, _ := git.BranchExists(ws.RepoPath, ws.Branch)
 
 		if branchExists {
-			if err := git.DeleteBranch(ws.RepoPath, ws.Branch, opts.Force); err != nil && !errors.Is(err, git.ErrBranchNotFound) {
+			// Force delete if we verified branch is merged via PR (git -d may fail if remote is gone)
+			if err := git.DeleteBranch(ws.RepoPath, ws.Branch, opts.Force || merged); err != nil && !errors.Is(err, git.ErrBranchNotFound) {
 				errs = append(errs, fmt.Errorf("delete branch: %w", err))
 			}
 		}
