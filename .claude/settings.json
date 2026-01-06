@@ -1,0 +1,13 @@
+{
+  "enabledPlugins": {
+    "beads@beads-marketplace": true
+  },
+  "extraKnownMarketplaces": {
+    "beads-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "steveyegge/beads"
+      }
+    }
+  }
+}
