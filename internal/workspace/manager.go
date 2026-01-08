@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -260,6 +261,14 @@ func (m *Manager) CreateWorkspace(ctx context.Context, repo, branch string, opts
 		return Workspace{}, err
 	}
 	rb.Add(func() { _ = git.RemoveWorktree(repoPath, worktreePath, true) })
+
+	// Copy .env from main repo to worktree if it exists
+	envSrc := filepath.Join(repoPath, ".env")
+	envDst := filepath.Join(worktreePath, ".env")
+	if err := copyFileIfExists(envSrc, envDst); err != nil {
+		rb.Run()
+		return Workspace{}, fmt.Errorf("copy .env: %w", err)
+	}
 
 	if err := m.bootstrapSession(ctx, safeName, worktreePath, false); err != nil {
 		rb.Run()
@@ -777,4 +786,25 @@ func (r *rollback) Run() {
 	for i := len(r.steps) - 1; i >= 0; i-- {
 		r.steps[i]()
 	}
+}
+
+// copyFileIfExists copies src to dst if src exists. Returns nil if src doesn't exist.
+func copyFileIfExists(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	return err
 }
