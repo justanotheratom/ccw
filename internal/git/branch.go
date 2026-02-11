@@ -52,9 +52,18 @@ func branchOrRemoteExists(repoPath, branch string) bool {
 	return false
 }
 
-// DetectDefaultBranch auto-detects the default branch (main or master) for a repo.
-// Returns an error if both exist or neither exists.
+// DetectDefaultBranch auto-detects the default branch for a repo.
+// It first checks origin/HEAD (set by git clone), then falls back to
+// heuristic main/master detection.
 func DetectDefaultBranch(repoPath string) (string, error) {
+	// Primary: ask the remote what its default branch is via origin/HEAD.
+	if ref, err := runGit(context.Background(), repoPath, "symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"); err == nil {
+		if name := strings.TrimPrefix(ref, "refs/remotes/origin/"); name != ref {
+			return name, nil
+		}
+	}
+
+	// Fallback: heuristic based on branch existence.
 	mainExists := branchOrRemoteExists(repoPath, "main")
 	masterExists := branchOrRemoteExists(repoPath, "master")
 
@@ -68,6 +77,66 @@ func DetectDefaultBranch(repoPath string) (string, error) {
 		return "master", nil
 	}
 	return "", errors.New("neither 'main' nor 'master' branch found; specify --base explicitly")
+}
+
+// SyncLocalBranch fast-forwards the local branch to match origin/<branch>.
+// This is best-effort: all failures are silently ignored.
+func SyncLocalBranch(repoPath, branch string) error {
+	ctx := context.Background()
+	remoteBranch := "origin/" + branch
+
+	// Check origin/<branch> exists.
+	remoteSHA, err := runGit(ctx, repoPath, "rev-parse", "--verify", "--quiet", remoteBranch)
+	if err != nil {
+		return nil
+	}
+
+	// Check local branch exists.
+	localExists, err := BranchExists(repoPath, branch)
+	if err != nil || !localExists {
+		return nil
+	}
+
+	// Check local is ancestor of remote (not diverged).
+	if _, err := runGit(ctx, repoPath, "merge-base", "--is-ancestor", branch, remoteBranch); err != nil {
+		// Diverged or error — skip.
+		return nil
+	}
+
+	// Already up to date?
+	localSHA, err := runGit(ctx, repoPath, "rev-parse", branch)
+	if err != nil {
+		return nil
+	}
+	if localSHA == remoteSHA {
+		return nil
+	}
+
+	// Check if branch is currently checked out.
+	head, err := runGit(ctx, repoPath, "symbolic-ref", "--quiet", "HEAD")
+	if err == nil && head == "refs/heads/"+branch {
+		// Branch is checked out — use merge --ff-only.
+		_, _ = runGit(ctx, repoPath, "merge", "--ff-only", remoteBranch)
+	} else {
+		// Branch is not checked out — move the ref directly.
+		_, _ = runGit(ctx, repoPath, "branch", "-f", branch, remoteBranch)
+	}
+
+	return nil
+}
+
+// resolveBaseName returns the base branch name (e.g. "main").
+// If baseBranch is empty, it auto-detects via DetectDefaultBranch.
+// Returns "" on failure so the caller can skip sync.
+func resolveBaseName(baseBranch, repoPath string) string {
+	if baseBranch != "" {
+		return baseBranch
+	}
+	detected, err := DetectDefaultBranch(repoPath)
+	if err != nil {
+		return ""
+	}
+	return detected
 }
 
 func resolveBaseRef(repoPath, baseBranch string) (string, error) {
@@ -113,6 +182,11 @@ func CreateBranch(repoPath, branch, baseBranch string, fetch bool) error {
 	baseRef, err := resolveBaseRef(repoPath, baseBranch)
 	if err != nil {
 		return err
+	}
+
+	// Best-effort: fast-forward local base branch to match remote.
+	if name := resolveBaseName(baseBranch, repoPath); name != "" {
+		_ = SyncLocalBranch(repoPath, name)
 	}
 
 	if _, err := runGit(context.Background(), repoPath, "branch", branch, baseRef); err != nil {

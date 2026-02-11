@@ -588,3 +588,227 @@ func TestRemoteBranchHasUnmergedCommitsWithPR_PRMerged(t *testing.T) {
 		t.Fatal("expected no unmerged commits when PR is merged")
 	}
 }
+
+// advanceRemote clones the bare remote, commits a new file on "main", pushes,
+// and returns the new SHA.
+func advanceRemote(t *testing.T, bareRemote string) string {
+	t.Helper()
+
+	tmpClone := t.TempDir()
+	if _, err := runGit(context.Background(), tmpClone, "clone", bareRemote, "."); err != nil {
+		t.Fatalf("clone bare: %v", err)
+	}
+	// Ensure we're on main (bare remote HEAD may default to master).
+	if _, err := runGit(context.Background(), tmpClone, "checkout", "main"); err != nil {
+		t.Fatalf("checkout main: %v", err)
+	}
+	if _, err := runGit(context.Background(), tmpClone, "config", "user.email", "test@example.com"); err != nil {
+		t.Fatalf("config email: %v", err)
+	}
+	if _, err := runGit(context.Background(), tmpClone, "config", "user.name", "Test User"); err != nil {
+		t.Fatalf("config name: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpClone, "remote-change.txt"), []byte("remote"), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if _, err := runGit(context.Background(), tmpClone, "add", "."); err != nil {
+		t.Fatalf("git add: %v", err)
+	}
+	if _, err := runGit(context.Background(), tmpClone, "commit", "-m", "remote advance"); err != nil {
+		t.Fatalf("git commit: %v", err)
+	}
+	if _, err := runGit(context.Background(), tmpClone, "push", "origin", "main"); err != nil {
+		t.Fatalf("git push: %v", err)
+	}
+
+	sha, err := runGit(context.Background(), tmpClone, "rev-parse", "HEAD")
+	if err != nil {
+		t.Fatalf("rev-parse HEAD: %v", err)
+	}
+	return sha
+}
+
+// --- DetectDefaultBranch tests with origin/HEAD ---
+
+func TestDetectDefaultBranch_OriginHEAD(t *testing.T) {
+	localRepo, _ := initRepoWithRemote(t)
+
+	// Create a master branch too so both exist.
+	if _, err := runGit(context.Background(), localRepo, "branch", "master"); err != nil {
+		t.Fatalf("create master: %v", err)
+	}
+	if _, err := runGit(context.Background(), localRepo, "push", "origin", "master"); err != nil {
+		t.Fatalf("push master: %v", err)
+	}
+
+	// Set origin/HEAD to point to main.
+	if _, err := runGit(context.Background(), localRepo, "remote", "set-head", "origin", "main"); err != nil {
+		t.Fatalf("set-head: %v", err)
+	}
+
+	branch, err := DetectDefaultBranch(localRepo)
+	if err != nil {
+		t.Fatalf("DetectDefaultBranch: %v", err)
+	}
+	if branch != "main" {
+		t.Fatalf("expected main (via origin/HEAD), got %s", branch)
+	}
+}
+
+func TestDetectDefaultBranch_FallbackMain(t *testing.T) {
+	// initRepo creates a local-only repo with main — no origin/HEAD.
+	repo := initRepo(t)
+	branch, err := DetectDefaultBranch(repo)
+	if err != nil {
+		t.Fatalf("DetectDefaultBranch: %v", err)
+	}
+	if branch != "main" {
+		t.Fatalf("expected main, got %s", branch)
+	}
+}
+
+func TestDetectDefaultBranch_FallbackMaster(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := runGit(context.Background(), dir, "init"); err != nil {
+		t.Fatalf("git init: %v", err)
+	}
+	if _, err := runGit(context.Background(), dir, "checkout", "-b", "master"); err != nil {
+		t.Fatalf("git checkout: %v", err)
+	}
+	if _, err := runGit(context.Background(), dir, "config", "user.email", "test@example.com"); err != nil {
+		t.Fatalf("git config: %v", err)
+	}
+	if _, err := runGit(context.Background(), dir, "config", "user.name", "Test User"); err != nil {
+		t.Fatalf("git config: %v", err)
+	}
+	if _, err := runGit(context.Background(), dir, "commit", "--allow-empty", "-m", "initial"); err != nil {
+		t.Fatalf("git commit: %v", err)
+	}
+
+	branch, err := DetectDefaultBranch(dir)
+	if err != nil {
+		t.Fatalf("DetectDefaultBranch: %v", err)
+	}
+	if branch != "master" {
+		t.Fatalf("expected master, got %s", branch)
+	}
+}
+
+// --- SyncLocalBranch tests ---
+
+func TestSyncLocalBranch_FastForward(t *testing.T) {
+	localRepo, bareRemote := initRepoWithRemote(t)
+
+	// Advance remote past local.
+	newSHA := advanceRemote(t, bareRemote)
+
+	// Fetch so origin/main is updated, but local main stays behind.
+	if _, err := runGit(context.Background(), localRepo, "fetch", "origin"); err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+
+	// Local main should be behind.
+	localBefore, _ := runGit(context.Background(), localRepo, "rev-parse", "main")
+	if localBefore == newSHA {
+		t.Fatal("local should be behind remote before sync")
+	}
+
+	// main is checked out, so this should merge --ff-only.
+	if err := SyncLocalBranch(localRepo, "main"); err != nil {
+		t.Fatalf("SyncLocalBranch: %v", err)
+	}
+
+	localAfter, _ := runGit(context.Background(), localRepo, "rev-parse", "main")
+	if localAfter != newSHA {
+		t.Fatalf("expected local main to be %s, got %s", newSHA, localAfter)
+	}
+}
+
+func TestSyncLocalBranch_NotCheckedOut(t *testing.T) {
+	localRepo, bareRemote := initRepoWithRemote(t)
+
+	// Switch to a different branch so main is NOT checked out.
+	if _, err := runGit(context.Background(), localRepo, "checkout", "-b", "other"); err != nil {
+		t.Fatalf("checkout -b other: %v", err)
+	}
+
+	newSHA := advanceRemote(t, bareRemote)
+	if _, err := runGit(context.Background(), localRepo, "fetch", "origin"); err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+
+	if err := SyncLocalBranch(localRepo, "main"); err != nil {
+		t.Fatalf("SyncLocalBranch: %v", err)
+	}
+
+	localAfter, _ := runGit(context.Background(), localRepo, "rev-parse", "main")
+	if localAfter != newSHA {
+		t.Fatalf("expected local main to be %s, got %s", newSHA, localAfter)
+	}
+}
+
+func TestSyncLocalBranch_AlreadyUpToDate(t *testing.T) {
+	localRepo, _ := initRepoWithRemote(t)
+
+	shaBefore, _ := runGit(context.Background(), localRepo, "rev-parse", "main")
+
+	if err := SyncLocalBranch(localRepo, "main"); err != nil {
+		t.Fatalf("SyncLocalBranch: %v", err)
+	}
+
+	shaAfter, _ := runGit(context.Background(), localRepo, "rev-parse", "main")
+	if shaBefore != shaAfter {
+		t.Fatal("expected no change when already up to date")
+	}
+}
+
+func TestSyncLocalBranch_Diverged(t *testing.T) {
+	localRepo, bareRemote := initRepoWithRemote(t)
+
+	// Add a local-only commit so main diverges from origin/main.
+	if err := os.WriteFile(filepath.Join(localRepo, "local.txt"), []byte("local"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if _, err := runGit(context.Background(), localRepo, "add", "."); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if _, err := runGit(context.Background(), localRepo, "commit", "-m", "local commit"); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	localBefore, _ := runGit(context.Background(), localRepo, "rev-parse", "main")
+
+	// Advance remote too.
+	advanceRemote(t, bareRemote)
+	if _, err := runGit(context.Background(), localRepo, "fetch", "origin"); err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+
+	// Should skip gracefully — local has diverged.
+	if err := SyncLocalBranch(localRepo, "main"); err != nil {
+		t.Fatalf("SyncLocalBranch: %v", err)
+	}
+
+	localAfter, _ := runGit(context.Background(), localRepo, "rev-parse", "main")
+	if localBefore != localAfter {
+		t.Fatal("expected local main to be unchanged when diverged")
+	}
+}
+
+func TestSyncLocalBranch_NoRemote(t *testing.T) {
+	repo := initRepo(t) // No origin remote.
+
+	// Should be a no-op, not an error.
+	if err := SyncLocalBranch(repo, "main"); err != nil {
+		t.Fatalf("SyncLocalBranch: %v", err)
+	}
+}
+
+func TestSyncLocalBranch_NoLocalBranch(t *testing.T) {
+	localRepo, _ := initRepoWithRemote(t)
+
+	// Try to sync a branch that doesn't exist locally.
+	if err := SyncLocalBranch(localRepo, "nonexistent"); err != nil {
+		t.Fatalf("SyncLocalBranch: %v", err)
+	}
+}
