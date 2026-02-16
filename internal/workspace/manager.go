@@ -270,6 +270,22 @@ func (m *Manager) CreateWorkspace(ctx context.Context, repo, branch string, opts
 		return Workspace{}, fmt.Errorf("copy .env: %w", err)
 	}
 
+	// Copy additional per-repo files from config
+	if rc, ok := m.cfg.Repos[repo]; ok {
+		for _, f := range rc.CopyFiles {
+			src := filepath.Join(repoPath, f)
+			dst := filepath.Join(worktreePath, f)
+			if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+				rb.Run()
+				return Workspace{}, fmt.Errorf("create dir for %s: %w", f, err)
+			}
+			if err := copyFileIfExists(src, dst); err != nil {
+				rb.Run()
+				return Workspace{}, fmt.Errorf("copy %s: %w", f, err)
+			}
+		}
+	}
+
 	if err := m.bootstrapSession(ctx, safeName, worktreePath, false); err != nil {
 		rb.Run()
 		return Workspace{}, err

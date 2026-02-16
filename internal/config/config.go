@@ -25,14 +25,19 @@ type Layout struct {
 	Right string `json:"right"`
 }
 
+type RepoConfig struct {
+	CopyFiles []string `json:"copy_files"`
+}
+
 type Config struct {
-	Version                    int    `json:"version"`
-	ReposDir                   string `json:"repos_dir"`
-	ITermCCMode                bool   `json:"iterm_cc_mode"`
-	ClaudeRenameDelay          int    `json:"claude_rename_delay"`
-	Layout                     Layout `json:"layout"`
-	Onboarded                  bool   `json:"onboarded"`
-	ClaudeDangerouslySkipPerms bool   `json:"claude_dangerously_skip_permissions"`
+	Version                    int                   `json:"version"`
+	ReposDir                   string                `json:"repos_dir"`
+	ITermCCMode                bool                  `json:"iterm_cc_mode"`
+	ClaudeRenameDelay          int                   `json:"claude_rename_delay"`
+	Layout                     Layout                `json:"layout"`
+	Onboarded                  bool                  `json:"onboarded"`
+	ClaudeDangerouslySkipPerms bool                  `json:"claude_dangerously_skip_permissions"`
+	Repos                      map[string]RepoConfig `json:"repos,omitempty"`
 }
 
 type Store struct {
