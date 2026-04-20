@@ -25,6 +25,8 @@ public actor CLIBridge {
             self.ccwURL = URL(fileURLWithPath: override)
             logger.notice("using CCW_BIN_PATH override at \(override, privacy: .public)")
             NSLog("CCWMenubar[cli] using CCW_BIN_PATH override at \(override)")
+        } else if let url = Bundle.main.url(forAuxiliaryExecutable: "ccw") {
+            self.ccwURL = url
         } else if let url = Bundle.main.url(forResource: "ccw", withExtension: nil) {
             self.ccwURL = url
         } else if let url = Self.findCCWInPath() {
