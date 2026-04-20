@@ -1,4 +1,0 @@
-sync:
-  branch: beads-sync
-  auto-commit: true
-  auto-push: true
