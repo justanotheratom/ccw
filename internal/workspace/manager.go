@@ -48,9 +48,9 @@ type Manager struct {
 	tmux     TmuxRunner
 
 	codexAvailable bool
-	skipDeps         bool
-	claudeCaps       claude.Capabilities
-	capsDetected     bool
+	skipDeps       bool
+	claudeCaps     claude.Capabilities
+	capsDetected   bool
 
 	// GitHub clients keyed by repoPath
 	ghClients map[string]*github.Client
@@ -379,6 +379,25 @@ func (m *Manager) OpenWorkspace(ctx context.Context, id string, opts OpenOptions
 	if opts.ForceAttach || term.IsTerminal(int(os.Stdout.Fd())) {
 		return m.tmux.AttachSession(ws.TmuxSession)
 	}
+	return nil
+}
+
+func (m *Manager) CloseWorkspace(ctx context.Context, id string) error {
+	if err := m.checkDepsByName("tmux"); err != nil {
+		return err
+	}
+
+	_, ws, err := m.lookupWorkspace(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if err := m.tmux.KillSession(ws.TmuxSession); err != nil && !errors.Is(err, tmux.ErrSessionMissing) {
+		return err
+	}
+
+	// Best-effort cleanup for the hidden iTerm control window used by -CC mode.
+	tmux.CloseITermControlWindow(ws.TmuxSession)
 	return nil
 }
 

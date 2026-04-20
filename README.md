@@ -26,6 +26,7 @@ The CLI is bundled inside the app at `CCW.app/Contents/MacOS/ccw` and symlinked 
 ```bash
 ccw ls              # List workspaces
 ccw new <branch>    # Create workspace
+ccw close <name>    # Close workspace session
 ccw open <name>     # Open workspace
 ccw rm <name>       # Remove workspace
 ccw version         # Show version

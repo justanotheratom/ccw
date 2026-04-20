@@ -192,6 +192,46 @@ func TestOpenWorkspaceCreatesSessionWhenMissing(t *testing.T) {
 	}
 }
 
+func TestCloseWorkspaceStopsSessionButKeepsWorkspace(t *testing.T) {
+	reposRoot, repoName := initRepoForManager(t)
+	tmuxStub := newStubTmux()
+	mgr := newManagerForTest(t, reposRoot, tmuxStub)
+
+	ws, err := mgr.CreateWorkspace(context.Background(), repoName, "feature/test", CreateOptions{NoFetch: true, NoAttach: true})
+	if err != nil {
+		t.Fatalf("CreateWorkspace: %v", err)
+	}
+
+	workspaceID := WorkspaceID(repoName, "feature/test")
+	if err := mgr.CloseWorkspace(context.Background(), workspaceID); err != nil {
+		t.Fatalf("CloseWorkspace: %v", err)
+	}
+
+	if tmuxStub.sessions[ws.TmuxSession] {
+		t.Fatalf("expected tmux session to be stopped")
+	}
+
+	if _, err := os.Stat(ws.WorktreePath); err != nil {
+		t.Fatalf("expected worktree path to remain: %v", err)
+	}
+
+	reg, err := mgr.regStore.Read(context.Background())
+	if err != nil {
+		t.Fatalf("read registry: %v", err)
+	}
+	if _, ok := reg.Workspaces[workspaceID]; !ok {
+		t.Fatalf("expected workspace to remain registered")
+	}
+
+	if err := mgr.OpenWorkspace(context.Background(), workspaceID, OpenOptions{ResumeClaude: true, FocusExisting: true}); err != nil {
+		t.Fatalf("OpenWorkspace after close: %v", err)
+	}
+
+	if !tmuxStub.sessions[ws.TmuxSession] {
+		t.Fatalf("expected tmux session to be recreated after reopen")
+	}
+}
+
 func TestRemoveWorkspaceRemovesResources(t *testing.T) {
 	reposRoot, repoName := initRepoForManager(t)
 	tmuxStub := newStubTmux()
