@@ -15,6 +15,8 @@ type stubTmux struct {
 	sessions   map[string]bool
 	failCreate bool
 	failSplit  bool
+	clientTTYs []string
+	closedTTYs []string
 }
 
 func newStubTmux() *stubTmux {
@@ -36,6 +38,14 @@ func (s *stubTmux) CreateSession(name, path string, detached bool) error {
 func (s *stubTmux) KillSession(name string) error {
 	delete(s.sessions, name)
 	return nil
+}
+
+func (s *stubTmux) ClientTTYs(session string) ([]string, error) {
+	return append([]string(nil), s.clientTTYs...), nil
+}
+
+func (s *stubTmux) CloseClientTTYs(ttys []string) {
+	s.closedTTYs = append([]string(nil), ttys...)
 }
 
 func (s *stubTmux) AttachSession(name string) error {
@@ -195,6 +205,7 @@ func TestOpenWorkspaceCreatesSessionWhenMissing(t *testing.T) {
 func TestCloseWorkspaceStopsSessionButKeepsWorkspace(t *testing.T) {
 	reposRoot, repoName := initRepoForManager(t)
 	tmuxStub := newStubTmux()
+	tmuxStub.clientTTYs = []string{"/dev/ttys003", "ttys004"}
 	mgr := newManagerForTest(t, reposRoot, tmuxStub)
 
 	ws, err := mgr.CreateWorkspace(context.Background(), repoName, "feature/test", CreateOptions{NoFetch: true, NoAttach: true})
@@ -230,11 +241,16 @@ func TestCloseWorkspaceStopsSessionButKeepsWorkspace(t *testing.T) {
 	if !tmuxStub.sessions[ws.TmuxSession] {
 		t.Fatalf("expected tmux session to be recreated after reopen")
 	}
+
+	if got, want := len(tmuxStub.closedTTYs), 2; got != want {
+		t.Fatalf("expected %d client TTYs to be closed, got %d (%v)", want, got, tmuxStub.closedTTYs)
+	}
 }
 
 func TestRemoveWorkspaceRemovesResources(t *testing.T) {
 	reposRoot, repoName := initRepoForManager(t)
 	tmuxStub := newStubTmux()
+	tmuxStub.clientTTYs = []string{"ttys005"}
 	mgr := newManagerForTest(t, reposRoot, tmuxStub)
 
 	ws, err := mgr.CreateWorkspace(context.Background(), repoName, "feature/test", CreateOptions{NoFetch: true, NoAttach: true})
@@ -258,6 +274,10 @@ func TestRemoveWorkspaceRemovesResources(t *testing.T) {
 
 	if _, err := os.Stat(ws.WorktreePath); err == nil {
 		t.Fatalf("expected worktree path to be removed")
+	}
+
+	if got, want := len(tmuxStub.closedTTYs), 1; got != want {
+		t.Fatalf("expected %d client TTY to be closed, got %d (%v)", want, got, tmuxStub.closedTTYs)
 	}
 
 	reg, err := mgr.regStore.Read(context.Background())

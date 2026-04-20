@@ -87,6 +87,35 @@ func (r Runner) HasAttachedClients(session string) (bool, error) {
 	return strings.TrimSpace(out) != "", nil
 }
 
+func (r Runner) ClientTTYs(session string) ([]string, error) {
+	out, err := r.run(context.Background(), "list-clients", "-t", session, "-F", "#{client_tty}")
+	if err != nil {
+		if code, ok := exitCode(err); ok && code == 1 {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if strings.TrimSpace(out) == "" {
+		return nil, nil
+	}
+
+	seen := make(map[string]struct{})
+	var ttys []string
+	for _, line := range strings.Split(out, "\n") {
+		tty := normalizeTTY(line)
+		if tty == "" {
+			continue
+		}
+		if _, ok := seen[tty]; ok {
+			continue
+		}
+		seen[tty] = struct{}{}
+		ttys = append(ttys, tty)
+	}
+
+	return ttys, nil
+}
+
 func (r Runner) CreateSession(name, path string, detached bool) error {
 	if exists, err := r.SessionExists(name); err != nil {
 		return err
@@ -115,6 +144,27 @@ func (r Runner) KillSession(name string) error {
 		}
 	}
 	return err
+}
+
+func (r Runner) CloseClientTTYs(ttys []string) {
+	if runtime.GOOS == "windows" {
+		return
+	}
+
+	for _, tty := range ttys {
+		normalized := normalizeTTY(tty)
+		if normalized == "" {
+			continue
+		}
+
+		cmd := exec.Command("pkill", "-HUP", "-t", normalized)
+		if err := cmd.Run(); err != nil {
+			if errors.Is(err, exec.ErrNotFound) {
+				return
+			}
+			continue
+		}
+	}
 }
 
 func (r Runner) AttachSession(name string) error {
@@ -269,6 +319,12 @@ func normalizeTarget(target string) string {
 		return target
 	}
 	return target + ":"
+}
+
+func normalizeTTY(tty string) string {
+	tty = strings.TrimSpace(tty)
+	tty = strings.TrimPrefix(tty, "/dev/")
+	return tty
 }
 
 func openNewMacTerminalWindow(session string, ccMode bool) error {

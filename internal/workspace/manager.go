@@ -25,8 +25,10 @@ import (
 type TmuxRunner interface {
 	SessionExists(name string) (bool, error)
 	HasAttachedClients(session string) (bool, error)
+	ClientTTYs(session string) ([]string, error)
 	CreateSession(name, path string, detached bool) error
 	KillSession(name string) error
+	CloseClientTTYs(ttys []string)
 	AttachSession(name string) error
 	SplitPane(session string, horizontal bool, path string) error
 	SendKeys(target string, keys []string, enter bool) error
@@ -392,9 +394,13 @@ func (m *Manager) CloseWorkspace(ctx context.Context, id string) error {
 		return err
 	}
 
+	clientTTYs, _ := m.tmux.ClientTTYs(ws.TmuxSession)
+
 	if err := m.tmux.KillSession(ws.TmuxSession); err != nil && !errors.Is(err, tmux.ErrSessionMissing) {
 		return err
 	}
+
+	m.tmux.CloseClientTTYs(clientTTYs)
 
 	// Best-effort cleanup for the hidden iTerm control window used by -CC mode.
 	tmux.CloseITermControlWindow(ws.TmuxSession)
@@ -570,10 +576,14 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, id string, opts RemoveOpt
 		errs = append(errs, fmt.Errorf("update registry: %w", err))
 	}
 
+	clientTTYs, _ := m.tmux.ClientTTYs(ws.TmuxSession)
+
 	// Kill tmux session LAST since ccw rm might be called from within the workspace
 	if err := m.tmux.KillSession(ws.TmuxSession); err != nil && !errors.Is(err, tmux.ErrSessionMissing) {
 		errs = append(errs, fmt.Errorf("kill session: %w", err))
 	}
+
+	m.tmux.CloseClientTTYs(clientTTYs)
 
 	// Close the iTerm control window if it exists (best-effort, no error on failure)
 	tmux.CloseITermControlWindow(ws.TmuxSession)

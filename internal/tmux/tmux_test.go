@@ -147,6 +147,27 @@ func TestNormalizeTarget(t *testing.T) {
 	}
 }
 
+func TestNormalizeTTY(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		expect string
+	}{
+		{"plain tty", "ttys003", "ttys003"},
+		{"dev prefix", "/dev/ttys003", "ttys003"},
+		{"trim whitespace", "  /dev/ttys003 \n", "ttys003"},
+		{"empty", "", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := normalizeTTY(tt.input); got != tt.expect {
+				t.Fatalf("normalizeTTY(%q) = %q, want %q", tt.input, got, tt.expect)
+			}
+		})
+	}
+}
+
 func TestSplitPaneWithUnderscoreInName(t *testing.T) {
 	requireTmux(t)
 	runner := NewRunner(false)
