@@ -29,7 +29,7 @@ func TestCheckMissingDependency(t *testing.T) {
 func TestMissingFiltersOptional(t *testing.T) {
 	results := []Result{
 		{Dependency: Dependency{Name: "git"}, Found: true},
-		{Dependency: Dependency{Name: "lazygit", Optional: true}, Found: false},
+		{Dependency: Dependency{Name: "codex", Optional: true}, Found: false},
 		{Dependency: Dependency{Name: "tmux"}, Found: false},
 	}
 

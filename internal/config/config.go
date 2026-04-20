@@ -67,7 +67,7 @@ func Default() Config {
 		ReposDir:                   defaultReposDir,
 		ITermCCMode:                true,
 		ClaudeRenameDelay:          5,
-		Layout:                     Layout{Left: "claude", Right: "lazygit"},
+		Layout:                     Layout{Left: "claude", Right: "codex"},
 		Onboarded:                  false,
 		ClaudeDangerouslySkipPerms: false,
 	}

@@ -43,10 +43,10 @@ func DefaultDependencies() []Dependency {
 			InstallHint: "Install Claude Code CLI: https://claude.com/claude-code",
 		},
 		{
-			Name:        "lazygit",
-			DisplayName: "lazygit",
+			Name:        "codex",
+			DisplayName: "Codex CLI",
 			Optional:    true,
-			InstallHint: "Optional: install with `brew install lazygit`.",
+			InstallHint: "Optional: install with `npm i -g @openai/codex` or `brew install codex`.",
 		},
 		{
 			Name:        "gh",

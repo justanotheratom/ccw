@@ -138,15 +138,15 @@ func (o *Onboarder) askLayout(scanner *bufio.Scanner) config.Layout {
 
 	cyan.Fprintln(o.stdout, "Choose your pane layout:")
 	dim.Fprintln(o.stdout, "  CCW opens a tmux session with two panes side-by-side.")
-	fmt.Fprintln(o.stdout, "  1) claude | lazygit  (default)")
-	fmt.Fprintln(o.stdout, "  2) lazygit | claude")
+	fmt.Fprintln(o.stdout, "  1) claude | codex  (default)")
+	fmt.Fprintln(o.stdout, "  2) codex | claude")
 	fmt.Fprint(o.stdout, "  [1/2, default: 1]: ")
 
-	layout := config.Layout{Left: "claude", Right: "lazygit"}
+	layout := config.Layout{Left: "claude", Right: "codex"}
 	if scanner.Scan() {
 		input := strings.TrimSpace(scanner.Text())
 		if input == "2" {
-			layout.Left = "lazygit"
+			layout.Left = "codex"
 			layout.Right = "claude"
 		}
 	}

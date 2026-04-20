@@ -101,7 +101,7 @@ func TestAskLayout(t *testing.T) {
 	scanner := bufioScanner(stdin)
 
 	layout := o.askLayout(scanner)
-	if layout.Left != "claude" || layout.Right != "lazygit" {
+	if layout.Left != "claude" || layout.Right != "codex" {
 		t.Fatalf("expected default layout, got %+v", layout)
 	}
 
@@ -111,7 +111,7 @@ func TestAskLayout(t *testing.T) {
 	scanner = bufioScanner(stdin)
 
 	layout = o.askLayout(scanner)
-	if layout.Left != "lazygit" || layout.Right != "claude" {
+	if layout.Left != "codex" || layout.Right != "claude" {
 		t.Fatalf("expected reversed layout, got %+v", layout)
 	}
 }

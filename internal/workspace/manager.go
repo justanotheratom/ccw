@@ -47,7 +47,7 @@ type Manager struct {
 	regStore *Store
 	tmux     TmuxRunner
 
-	lazygitAvailable bool
+	codexAvailable bool
 	skipDeps         bool
 	claudeCaps       claude.Capabilities
 	capsDetected     bool
@@ -126,11 +126,11 @@ func NewManager(root string, tmuxRunner TmuxRunner) (*Manager, error) {
 
 func (m *Manager) detectOptionalDeps() {
 	for _, dep := range deps.DefaultDependencies() {
-		if dep.Name != "lazygit" {
+		if dep.Name != "codex" {
 			continue
 		}
 		res := deps.Check(dep)
-		m.lazygitAvailable = res.Found
+		m.codexAvailable = res.Found
 	}
 }
 
@@ -181,8 +181,8 @@ func (m *Manager) checkDepsByName(names ...string) error {
 
 	results := deps.CheckAll(toCheck)
 	for _, res := range results {
-		if res.Dependency.Name == "lazygit" {
-			m.lazygitAvailable = res.Found
+		if res.Dependency.Name == "codex" {
+			m.codexAvailable = res.Found
 		}
 	}
 
@@ -337,8 +337,8 @@ func (m *Manager) bootstrapSession(ctx context.Context, name, path string, resum
 		return err
 	}
 
-	if m.lazygitAvailable {
-		_ = m.tmux.SendKeys(name+":0.1", []string{"lazygit"}, true)
+	if m.codexAvailable {
+		_ = m.tmux.SendKeys(name+":0.1", []string{"codex --dangerously-bypass-approvals-and-sandbox"}, true)
 	}
 
 	return nil
