@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -618,6 +619,55 @@ func (m *Manager) lookupWorkspace(ctx context.Context, query string) (string, Wo
 	}
 
 	return "", Workspace{}, fmt.Errorf("workspace %s not found (try ccw ls)", query)
+}
+
+// FindCurrent identifies the workspace the caller is "inside" using, in order:
+//  1. tmux: if $TMUX is set, match registry entries by TmuxSession against
+//     `tmux display-message -p '#S'`.
+//  2. cwd: match the current working directory against registry WorktreePath
+//     (exact, or any ancestor of cwd).
+//
+// Returns ErrNoCurrentWorkspace if none match.
+func (m *Manager) FindCurrent(ctx context.Context) (string, Workspace, error) {
+	reg, err := m.regStore.Read(ctx)
+	if err != nil {
+		return "", Workspace{}, err
+	}
+
+	if os.Getenv("TMUX") != "" {
+		if name, err := currentTmuxSession(); err == nil && name != "" {
+			for id, ws := range reg.Workspaces {
+				if ws.TmuxSession == name {
+					return id, ws, nil
+				}
+			}
+		}
+	}
+
+	if cwd, err := os.Getwd(); err == nil {
+		cwd, _ = filepath.EvalSymlinks(cwd)
+		for id, ws := range reg.Workspaces {
+			wt, _ := filepath.EvalSymlinks(ws.WorktreePath)
+			if wt == "" {
+				wt = ws.WorktreePath
+			}
+			if cwd == wt || strings.HasPrefix(cwd, wt+string(filepath.Separator)) {
+				return id, ws, nil
+			}
+		}
+	}
+
+	return "", Workspace{}, ErrNoCurrentWorkspace
+}
+
+var ErrNoCurrentWorkspace = errors.New("not inside a ccw workspace")
+
+func currentTmuxSession() (string, error) {
+	out, err := exec.Command("tmux", "display-message", "-p", "#S").Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 func (m *Manager) WorkspaceInfo(ctx context.Context, query string) (WorkspaceStatus, error) {

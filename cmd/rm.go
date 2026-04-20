@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -12,11 +13,10 @@ import (
 )
 
 var rmCmd = &cobra.Command{
-	Use:   "rm <workspace>",
-	Short: "Remove a workspace",
-	Args:  cobra.ExactArgs(1),
+	Use:   "rm [workspace]",
+	Short: "Remove a workspace (defaults to the current one)",
+	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		id := args[0]
 		force, _ := cmd.Flags().GetBool("force")
 		keepBranch, _ := cmd.Flags().GetBool("keep-branch")
 		keepWorktree, _ := cmd.Flags().GetBool("keep-worktree")
@@ -25,6 +25,21 @@ var rmCmd = &cobra.Command{
 		mgr, err := newManager()
 		if err != nil {
 			return err
+		}
+
+		var id string
+		if len(args) == 1 {
+			id = args[0]
+		} else {
+			curID, _, err := mgr.FindCurrent(cmd.Context())
+			if err != nil {
+				if errors.Is(err, workspace.ErrNoCurrentWorkspace) {
+					return fmt.Errorf("not inside a ccw workspace; pass a workspace id (ccw rm <workspace>) or cd into one")
+				}
+				return err
+			}
+			id = curID
+			fmt.Fprintf(cmd.OutOrStdout(), "removing current workspace: %s\n", id)
 		}
 
 		// Build confirmation function for interactive prompts
